@@ -8,6 +8,7 @@
     "server": "node apps/server/src/main.js",
     "test": "node --test",
     "build": "node scripts/build-check.js",
+    "deploy:pages": "wrangler --cwd apps/web pages deploy . --project-name pdf-study --branch main",
     "deploy:discovery": "wrangler deploy --config infra/cloudflare/discovery-worker/wrangler.jsonc"
   },
   "engines": {

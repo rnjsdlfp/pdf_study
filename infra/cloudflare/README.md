@@ -63,8 +63,14 @@ Allow only the owner's email or identity provider group.
 
 ## Pages
 
+Deploy Pages from inside `apps/web` so Wrangler uploads the Pages Functions bundle:
+
+```bash
+npm run deploy:pages
+```
+
 The deployed frontend reads its API origin from `apps/web/config.js`.
 
-- On the same MacBook, Pages defaults to `http://127.0.0.1:3001`.
-- For another device, use the URL opened by `★CodexReader Tunnel.command`.
+- On `pdf-study.pages.dev`, the frontend first calls the same-origin `/api/*` Pages Function, which proxies to the latest validated MacBook tunnel.
+- The discovery Worker proxy and direct tunnel URL remain fallbacks.
 - A custom API hostname can still be provided with `?apiBase=https://...`.
