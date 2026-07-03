@@ -740,6 +740,7 @@ function renderAnalysisTabs() {
   els.translationTabButton.classList.toggle("active", translationActive);
   els.analysisTabButton.setAttribute("aria-selected", String(!translationActive));
   els.translationTabButton.setAttribute("aria-selected", String(translationActive));
+  els.translateButton.hidden = translationActive;
 }
 
 function setAnalysisTab(tab) {
