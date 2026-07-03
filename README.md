@@ -29,6 +29,8 @@ If macOS says the file could not be executed because you do not have access priv
 bash ./fix-mac-permissions.sh
 ```
 
+When you open `https://pdf-study.pages.dev/` on the same MacBook, the web UI automatically connects to `http://127.0.0.1:3001`.
+
 For development inside this repository, set `CODEX_READER_HOME=./.runtime` so runtime data stays inside the ignored workspace folder.
 
 ## What Is Implemented

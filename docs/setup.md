@@ -36,6 +36,14 @@ bash ./fix-mac-permissions.sh
 
 If macOS blocks the first launch for security reasons, right-click the file and choose `Open`.
 
+When you open `https://pdf-study.pages.dev/` on the same MacBook, the web UI automatically connects to the local runner at `http://127.0.0.1:3001`.
+
+For another device, such as an iPad or a different laptop, use a Cloudflare Tunnel API hostname and open Pages once with:
+
+```text
+https://pdf-study.pages.dev/?apiBase=https://reader-api.yourdomain.com
+```
+
 4. Confirm Codex CLI:
 
 ```bash
