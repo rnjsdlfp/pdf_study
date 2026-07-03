@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Codex Reader</title>
-    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/styles.css?v=20260703-upload-label" />
   </head>
   <body>
     <div class="app-shell">
@@ -42,10 +42,10 @@
         <aside class="source-rail">
           <form class="upload-zone" id="uploadForm">
             <input id="pdfInput" name="file" type="file" accept="application/pdf,.pdf" />
-            <button class="button primary full" type="button" id="pickPdfButton">
+            <label class="button primary full" id="pickPdfButton" for="pdfInput" role="button" tabindex="0">
               <svg viewBox="0 0 24 24"><path d="M12 5v14" /><path d="M5 12h14" /></svg>
               Upload PDF
-            </button>
+            </label>
           </form>
 
           <form class="url-form" id="urlForm">
@@ -238,7 +238,7 @@
           });
       })();
     </script>
-    <script src="/config.js?v=20260703-inline-bootstrap" onerror="window.codexReaderScriptLoadFailed && window.codexReaderScriptLoadFailed(this.src)"></script>
-    <script src="/app.js?v=20260703-inline-bootstrap" onerror="window.codexReaderScriptLoadFailed && window.codexReaderScriptLoadFailed(this.src)"></script>
+    <script src="/config.js?v=20260703-upload-label" onerror="window.codexReaderScriptLoadFailed && window.codexReaderScriptLoadFailed(this.src)"></script>
+    <script src="/app.js?v=20260703-upload-label" onerror="window.codexReaderScriptLoadFailed && window.codexReaderScriptLoadFailed(this.src)"></script>
   </body>
 </html>

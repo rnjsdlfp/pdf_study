@@ -229,8 +229,14 @@ svg {
   min-height: calc(100vh - 64px);
 }
 
-.upload-zone input {
-  display: none;
+.upload-zone input[type="file"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .url-form {

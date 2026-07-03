@@ -75,7 +75,12 @@ function init() {
 }
 
 function bindEvents() {
-  els.pickPdfButton.addEventListener("click", () => els.pdfInput.click());
+  els.pickPdfButton.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      els.pdfInput.click();
+    }
+  });
   els.pdfInput.addEventListener("change", () => {
     const file = els.pdfInput.files[0];
     if (file) {
