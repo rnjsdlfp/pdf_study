@@ -20,7 +20,8 @@ const {
   codexCommandCandidates,
   buildCodexArgs,
   firstCommandWord,
-  sanitizeCodexResult
+  sanitizeCodexResult,
+  makeSpecializedTerms
 } = require("../apps/server/src/codexAdapter");
 const { isPidAlive } = require("../apps/mac-runner/CodexReaderRunner");
 const { Readable } = require("node:stream");
@@ -102,6 +103,20 @@ test("Codex result sanitizer removes markdown emphasis markers", () => {
   assert.equal(cleaned.summary_original, "Sharp inflection expected");
   assert.equal(cleaned.terms[0].term, "EBITDA");
   assert.equal(cleaned.terms[0].definition_original, "earnings metric");
+});
+
+test("fallback terms prefer abbreviations and specialized hard terms", () => {
+  const terms = makeSpecializedTerms(
+    [
+      "Revenue improved while EBITDA, GLP-1 persistence, OW ratings, and cardiometabolic endpoints drove the investment debate.",
+      "The company also discussed longitudinal utilization and reimbursement sensitivity."
+    ].join(" ")
+  ).map((item) => item.term);
+  assert.equal(terms[0], "GLP-1");
+  assert.equal(terms.includes("EBITDA"), true);
+  assert.equal(terms.includes("OW"), true);
+  assert.equal(terms.includes("cardiometabolic"), true);
+  assert.equal(terms.includes("Revenue"), false);
 });
 
 test("Codex command lookup includes explicit and common paths", () => {

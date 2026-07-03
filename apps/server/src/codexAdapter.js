@@ -568,5 +568,6 @@ module.exports = {
   requiresCodexCli,
   sanitizeCodexResult,
   stripMarkdownOutputMarkers,
+  makeSpecializedTerms,
   fallbackResult
 };

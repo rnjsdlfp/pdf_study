@@ -23,12 +23,13 @@ const API_DISCOVERY_URL = normalizeApiBase(window.CODEX_READER_CONFIG?.discovery
 const APP_API_BASE_STORAGE_KEY = window.CODEX_READER_CONFIG?.apiBaseStorageKey || "codexReaderApiBaseV2";
 const FORCE_API_DISCOVERY = Boolean(window.CODEX_READER_CONFIG?.forceDiscovery);
 const PREFER_SAME_ORIGIN_API = Boolean(window.CODEX_READER_CONFIG?.preferSameOriginApi);
-const APP_BUILD_VERSION = "20260703-selection-terms";
+const APP_BUILD_VERSION = "20260703-selection-popup";
 let discoveryCheckedAt = 0;
 let discoveryPromise = null;
 let discoveryForcedOnce = false;
 let discoveredDirectApiBase = "";
 let statusErrorShown = false;
+let selectionTimer = null;
 
 const els = {
   documentTitle: document.getElementById("documentTitle"),
@@ -139,7 +140,10 @@ function bindEvents() {
   els.zoomOutButton.addEventListener("click", () => setZoom(state.zoom - 0.08));
   els.zoomInButton.addEventListener("click", () => setZoom(state.zoom + 0.08));
 
-  els.readerSurface.addEventListener("mouseup", handleSelection);
+  els.readerSurface.addEventListener("mouseup", scheduleSelectionPopup);
+  els.readerSurface.addEventListener("pointerup", scheduleSelectionPopup);
+  els.readerSurface.addEventListener("keyup", scheduleSelectionPopup);
+  document.addEventListener("selectionchange", scheduleSelectionPopup);
   document.addEventListener("mousedown", (event) => {
     if (!els.selectionPopup.contains(event.target)) {
       hideSelectionPopup();
@@ -582,15 +586,23 @@ async function createAnalysisJob(scope) {
   }
 }
 
+function scheduleSelectionPopup() {
+  window.clearTimeout(selectionTimer);
+  selectionTimer = window.setTimeout(handleSelection, 80);
+}
+
 function handleSelection() {
   const selection = window.getSelection();
   const text = selection ? selection.toString().replace(/\s+/g, " ").trim() : "";
-  if (!selection || text.length < 8 || !els.readerSurface.contains(selection.anchorNode)) {
+  if (!selection || text.length < 8 || !isReaderSelection(selection)) {
     return;
   }
 
   const range = selection.getRangeAt(0);
-  const rect = range.getBoundingClientRect();
+  const rect = selectionRect(range);
+  if (!rect) {
+    return;
+  }
   state.selectedText = text.slice(0, 4000);
   state.selectedRange = range.cloneRange();
   const estimatedWidth = window.innerWidth < 520 ? window.innerWidth - 24 : 310;
@@ -599,6 +611,27 @@ function handleSelection() {
   els.selectionPopup.style.top = `${top}px`;
   els.selectionPopup.style.left = `${left}px`;
   els.selectionPopup.hidden = false;
+}
+
+function isReaderSelection(selection) {
+  const anchorInReader = selection.anchorNode && els.readerSurface.contains(selection.anchorNode);
+  const focusInReader = selection.focusNode && els.readerSurface.contains(selection.focusNode);
+  if (anchorInReader || focusInReader) {
+    return true;
+  }
+  if (selection.rangeCount === 0) {
+    return false;
+  }
+  return els.readerSurface.contains(selection.getRangeAt(0).commonAncestorContainer);
+}
+
+function selectionRect(range) {
+  const rects = [...range.getClientRects()].filter((rect) => rect.width > 0 && rect.height > 0);
+  if (rects.length > 0) {
+    return rects[0];
+  }
+  const rect = range.getBoundingClientRect();
+  return rect.width > 0 && rect.height > 0 ? rect : null;
 }
 
 function hideSelectionPopup() {
