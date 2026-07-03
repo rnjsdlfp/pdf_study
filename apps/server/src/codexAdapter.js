@@ -26,14 +26,17 @@ class CodexAdapter {
 
     const codexCommand = await this.resolveCodexCommand();
     const cli = codexCommand ? await commandOk(codexCommand, ["--version"], 3000) : { ok: false, stdout: "", stderr: "" };
-    const webSearch = cli.ok ? await commandOk(codexCommand, ["exec", "--help"], 5000) : { ok: false, stdout: "" };
+    const rootHelp = cli.ok ? await commandOk(codexCommand, ["--help"], 5000) : { ok: false, stdout: "", stderr: "" };
+    const execHelp = cli.ok ? await commandOk(codexCommand, ["exec", "--help"], 5000) : { ok: false, stdout: "", stderr: "" };
+    const searchMode = detectCodexSearchMode(rootHelp, execHelp);
 
     this.statusCache = {
       codex_cli_available: cli.ok,
       codex_command: cli.ok ? codexCommand : "",
       codex_version: normalizeWhitespace(cli.stdout || cli.stderr || ""),
       codex_login_ok: cli.ok,
-      codex_web_search_ok: cli.ok && /--search/.test(`${webSearch.stdout || ""}\n${webSearch.stderr || ""}`),
+      codex_web_search_ok: cli.ok && searchMode !== "none",
+      codex_web_search_mode: cli.ok ? searchMode : "none",
       codex_mode: this.config.codexMode,
       last_checked_at: new Date().toISOString()
     };
@@ -74,7 +77,7 @@ class CodexAdapter {
     });
     const args = buildCodexArgs(jobType, {
       ...this.config,
-      codexSearchSupported: status.codex_web_search_ok
+      codexSearchMode: status.codex_web_search_mode
     });
 
     try {
@@ -173,17 +176,42 @@ function runCodexCommand(command, args, input, options = {}) {
 }
 
 function buildCodexArgs(jobType, config = {}) {
-  const args = ["exec", "--json", "--ephemeral", "--sandbox", "read-only"];
+  const searchMode = normalizeCodexSearchMode(config.codexSearchMode, config.codexSearchSupported);
+  const useSearch = searchMode !== "none" && shouldUseCodexSearch(jobType);
+  const args = useSearch && searchMode === "root" ? ["--search", "exec"] : ["exec"];
+  args.push("--json", "--ephemeral", "--sandbox", "read-only");
   if (config.codexSkipGitRepoCheck !== false) {
     args.push("--skip-git-repo-check");
   }
   if (config.codexModel) {
     args.push("--model", String(config.codexModel));
   }
-  if (config.codexSearchSupported === true && shouldUseCodexSearch(jobType)) {
+  if (useSearch && searchMode === "exec") {
     args.push("--search");
   }
   return args;
+}
+
+function detectCodexSearchMode(rootHelp, execHelp) {
+  const execText = `${execHelp?.stdout || ""}\n${execHelp?.stderr || ""}`;
+  if (/--search\b/.test(execText)) {
+    return "exec";
+  }
+  const rootText = `${rootHelp?.stdout || ""}\n${rootHelp?.stderr || ""}`;
+  if (/--search\b/.test(rootText)) {
+    return "root";
+  }
+  return "none";
+}
+
+function normalizeCodexSearchMode(mode, legacySupported) {
+  if (mode === "root" || mode === "exec") {
+    return mode;
+  }
+  if (legacySupported === true) {
+    return "exec";
+  }
+  return "none";
 }
 
 function shouldUseCodexSearch(jobType) {

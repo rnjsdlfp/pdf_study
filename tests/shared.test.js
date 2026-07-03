@@ -158,7 +158,7 @@ test("Codex execution args match automation defaults", () => {
   const args = buildCodexArgs("document_analysis", {
     codexModel: "gpt-5.5",
     codexSkipGitRepoCheck: true,
-    codexSearchSupported: true
+    codexSearchMode: "exec"
   });
   assert.deepEqual(args.slice(0, 8), [
     "exec",
@@ -171,10 +171,18 @@ test("Codex execution args match automation defaults", () => {
     "gpt-5.5"
   ]);
   assert.equal(args.includes("--search"), true);
+  assert.equal(args.indexOf("--search") > args.indexOf("exec"), true);
+  const rootSearch = buildCodexArgs("document_analysis", {
+    codexModel: "gpt-5.5",
+    codexSkipGitRepoCheck: true,
+    codexSearchMode: "root"
+  });
+  assert.deepEqual(rootSearch.slice(0, 2), ["--search", "exec"]);
+  assert.equal(rootSearch.includes("--json"), true);
   const withoutSearch = buildCodexArgs("document_analysis", {
     codexModel: "gpt-5.5",
     codexSkipGitRepoCheck: true,
-    codexSearchSupported: false
+    codexSearchMode: "none"
   });
   assert.equal(withoutSearch.includes("--search"), false);
   assert.equal(firstCommandWord("codex exec --skip-git-repo-check"), "codex");
@@ -215,7 +223,7 @@ test("manual prompts include summary context and selected output language", () =
 });
 
 test("follow-up answer prompt uses search, full text, and language", () => {
-  const args = buildCodexArgs("follow_up_answer", { codexSearchSupported: true });
+  const args = buildCodexArgs("follow_up_answer", { codexSearchMode: "root" });
   const prompt = buildPrompt("follow_up_answer", {
     document_title: "Example",
     output_language: "English",
@@ -231,7 +239,7 @@ test("follow-up answer prompt uses search, full text, and language", () => {
 });
 
 test("prompts degrade when Codex CLI search flag is unavailable", () => {
-  const args = buildCodexArgs("document_analysis", { codexSearchSupported: false });
+  const args = buildCodexArgs("document_analysis", { codexSearchMode: "none" });
   const prompt = buildPrompt("document_analysis", {
     document_title: "Example",
     codex_web_search_ok: false,
