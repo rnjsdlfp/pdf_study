@@ -54,7 +54,7 @@ init();
 function init() {
   bindEvents();
   pollStatus();
-  loadDocuments();
+  loadDocuments({ silentNetworkError: true });
   setInterval(pollStatus, 5000);
 }
 
@@ -114,17 +114,18 @@ function bindEvents() {
 }
 
 async function api(path, options = {}) {
+  const { uploadRequest = false, ...fetchOptions } = options;
   let response;
   try {
     response = await fetch(apiUrl(path), {
       headers: {
-        ...(options.body && !(options.body instanceof FormData) ? { "Content-Type": "application/json" } : {}),
-        ...(options.headers || {})
+        ...(fetchOptions.body && !(fetchOptions.body instanceof FormData) ? { "Content-Type": "application/json" } : {}),
+        ...(fetchOptions.headers || {})
       },
-      ...options
+      ...fetchOptions
     });
   } catch (error) {
-    throw new Error(networkFailureMessage(error));
+    throw networkFailureError(error, { uploadRequest });
   }
 
   const text = await response.text();
@@ -140,14 +141,24 @@ async function api(path, options = {}) {
   return payload;
 }
 
-function networkFailureMessage(error) {
+function networkFailureError(error, context = {}) {
+  const next = new Error(networkFailureMessage(error, context));
+  next.isNetworkError = true;
+  return next;
+}
+
+function networkFailureMessage(error, context = {}) {
   const message = error?.message || "";
   if (/failed to fetch|networkerror|load failed/i.test(message)) {
-    return [
+    const base = [
       "Could not reach the MacBook server.",
-      "Open ★CodexReader.command on this Mac and keep it running, then try again.",
-      "If this happened during upload, the PDF may also be too large for the local connection."
-    ].join(" ");
+      "Open ★CodexReader.command on this Mac and keep it running.",
+      "If you opened this page on another device, 127.0.0.1 points to that device, not the MacBook."
+    ];
+    if (context.uploadRequest) {
+      base.push("If this happened during upload, also check that the PDF is under the upload limit.");
+    }
+    return base.join(" ");
   }
   return message || "Network request failed.";
 }
@@ -188,7 +199,7 @@ function setStatus(element, ok, text, warnWhenFalse = false) {
   element.lastChild.textContent = text;
 }
 
-async function loadDocuments() {
+async function loadDocuments(options = {}) {
   try {
     const payload = await api("/api/documents");
     state.documents = payload.documents || [];
@@ -197,6 +208,9 @@ async function loadDocuments() {
       await selectDocument(state.documents[0].id);
     }
   } catch (error) {
+    if (options.silentNetworkError && error.isNetworkError) {
+      return;
+    }
     toast(error.message);
   }
 }
@@ -283,7 +297,8 @@ async function uploadPdf(file) {
     form.append("file", file);
     const payload = await api("/api/documents", {
       method: "POST",
-      body: form
+      body: form,
+      uploadRequest: true
     });
     toast(payload.cache_hit ? "Opened cached PDF." : "PDF uploaded.");
     els.pdfInput.value = "";
