@@ -9,19 +9,23 @@ export default {
 
     const url = new URL(request.url);
     if (request.method === "GET" && url.pathname === "/current") {
-      return json(await currentTunnel(env));
+      return json(await currentTunnel(env, url));
     }
 
     if (request.method === "POST" && url.pathname === "/register") {
       return json(await registerTunnel(request, env));
     }
 
+    if (url.pathname.startsWith("/proxy/")) {
+      return proxyToCurrentTunnel(request, env, url);
+    }
+
     return json({ ok: false, error: "not_found" }, 404);
   }
 };
 
-async function currentTunnel(env) {
-  const stored = await env.TUNNEL_KV.get(CURRENT_KEY, "json");
+async function currentTunnel(env, requestUrl) {
+  const stored = await getCurrentTunnelRecord(env);
   if (!stored?.apiBase) {
     return { ok: false, status: "missing" };
   }
@@ -47,9 +51,62 @@ async function currentTunnel(env) {
     ok: true,
     status: "online",
     apiBase: stored.apiBase,
+    proxyBase: requestUrl ? `${requestUrl.origin}/proxy` : "",
     updatedAt: stored.updatedAt,
     health: health.payload
   };
+}
+
+async function proxyToCurrentTunnel(request, env, requestUrl) {
+  if (!["GET", "POST", "DELETE", "HEAD"].includes(request.method)) {
+    return json({ ok: false, error: "method_not_allowed" }, 405);
+  }
+
+  const stored = await getCurrentTunnelRecord(env);
+  if (!stored?.apiBase) {
+    return json({ ok: false, error: "missing_tunnel" }, 503);
+  }
+
+  const ageSeconds = Math.round((Date.now() - Date.parse(stored.updatedAt || 0)) / 1000);
+  const maxAgeSeconds = Number(env.MAX_TUNNEL_AGE_SECONDS || DEFAULT_MAX_AGE_SECONDS);
+  if (!Number.isFinite(ageSeconds) || ageSeconds > maxAgeSeconds) {
+    return json({ ok: false, error: "stale_tunnel", updatedAt: stored.updatedAt }, 503);
+  }
+
+  const upstreamPath = requestUrl.pathname.replace(/^\/proxy/, "") || "/";
+  const upstreamUrl = new URL(`${upstreamPath}${requestUrl.search}`, stored.apiBase);
+  const headers = new Headers(request.headers);
+  headers.delete("host");
+
+  let upstream;
+  try {
+    upstream = await fetch(upstreamUrl, {
+      method: request.method,
+      headers,
+      body: ["GET", "HEAD"].includes(request.method) ? undefined : request.body,
+      redirect: "manual",
+      cf: { cacheTtl: 0 }
+    });
+  } catch (error) {
+    return json({ ok: false, error: "proxy_fetch_failed", detail: error.message || "fetch_failed" }, 502);
+  }
+
+  const responseHeaders = new Headers(upstream.headers);
+  for (const [key, value] of Object.entries(corsHeaders())) {
+    responseHeaders.set(key, value);
+  }
+  responseHeaders.set("Cache-Control", "no-store");
+  responseHeaders.set("Access-Control-Expose-Headers", "Content-Length,Content-Range,Accept-Ranges,Content-Type");
+
+  return new Response(upstream.body, {
+    status: upstream.status,
+    statusText: upstream.statusText,
+    headers: responseHeaders
+  });
+}
+
+async function getCurrentTunnelRecord(env) {
+  return env.TUNNEL_KV.get(CURRENT_KEY, "json");
 }
 
 async function registerTunnel(request, env) {
@@ -128,6 +185,6 @@ function corsHeaders() {
   return {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type"
+    "Access-Control-Allow-Headers": "Content-Type,X-Codex-Reader-Token,CF-Access-Jwt-Assertion,Range"
   };
 }

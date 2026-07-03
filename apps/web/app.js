@@ -23,6 +23,7 @@ const FORCE_API_DISCOVERY = Boolean(window.CODEX_READER_CONFIG?.forceDiscovery);
 let discoveryCheckedAt = 0;
 let discoveryPromise = null;
 let discoveryForcedOnce = false;
+let discoveredDirectApiBase = "";
 
 const els = {
   documentTitle: document.getElementById("documentTitle"),
@@ -255,7 +256,7 @@ async function apiBaseCandidates() {
   discoveryForcedOnce = discoveryForcedOnce || force;
   const discovered = await discoverApiBase({ force });
   if (discovered) {
-    return uniqueApiBases([discovered, activeApiBase, ...API_BASE_CANDIDATES]);
+    return uniqueApiBases([discovered, activeApiBase, discoveredDirectApiBase, ...API_BASE_CANDIDATES]);
   }
   return uniqueApiBases([activeApiBase, ...API_BASE_CANDIDATES]);
 }
@@ -277,7 +278,9 @@ async function discoverApiBase(options = {}) {
         return "";
       }
       const payload = await response.json();
-      const apiBase = normalizeApiBase(payload?.ok ? payload.apiBase : "");
+      const directApiBase = normalizeApiBase(payload?.ok ? payload.apiBase : "");
+      const apiBase = normalizeApiBase(payload?.ok ? payload.proxyBase || payload.apiBase : "");
+      discoveredDirectApiBase = directApiBase && directApiBase !== apiBase ? directApiBase : "";
       if (apiBase) {
         localStorage.setItem(API_BASE_STORAGE_KEY, apiBase);
       }
