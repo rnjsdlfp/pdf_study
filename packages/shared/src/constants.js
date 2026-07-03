@@ -1,5 +1,5 @@
-const PROMPT_VERSION = "2026-07-03-mvp";
-const SCHEMA_VERSION = "1";
+const PROMPT_VERSION = "2026-07-03-codex-analysis-tabs";
+const SCHEMA_VERSION = "2";
 
 const JOB_TYPES = Object.freeze({
   PAGE_ANALYSIS: "page_analysis",
