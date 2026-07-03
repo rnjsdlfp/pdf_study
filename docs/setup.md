@@ -22,8 +22,8 @@ npm run start
 3. Double-click one of these files in Finder:
 
 ```text
-CodexReader.command
-Codex Reader.app
+★CodexReader.command
+★ Codex Reader.app
 ```
 
 The launcher starts the backend in the background and opens `http://127.0.0.1:3001`.
@@ -50,7 +50,7 @@ codex exec --help
 If you prefer Terminal:
 
 ```bash
-./CodexReader.command
+./★CodexReader.command
 ```
 
 Or:

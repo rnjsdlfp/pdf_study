@@ -4,13 +4,13 @@
 <plist version="1.0">
 <dict>
   <key>CFBundleDisplayName</key>
-  <string>Codex Reader</string>
+  <string>★ Codex Reader</string>
   <key>CFBundleExecutable</key>
   <string>CodexReader</string>
   <key>CFBundleIdentifier</key>
   <string>com.codexreader.launcher</string>
   <key>CFBundleName</key>
-  <string>Codex Reader</string>
+  <string>★ Codex Reader</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
