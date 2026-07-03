@@ -121,6 +121,14 @@
             <div class="progress-meta" id="analysisProgressMeta">Waiting for Codex CLI</div>
           </section>
 
+          <section class="last-error" id="lastError" hidden>
+            <div class="last-error-row">
+              <strong>Last error</strong>
+              <button class="plain-button" id="lastErrorDismissButton" type="button">Clear</button>
+            </div>
+            <div id="lastErrorMessage"></div>
+          </section>
+
           <div id="analysisContent">
             <section class="analysis-section">
               <div class="section-title">Summary</div>
@@ -172,7 +180,9 @@
     </noscript>
     <script>
       (function () {
-        var build = "20260703-default-followups-v2";
+        var build = "20260704-toast-errors-v1";
+        var activeToasts = {};
+        var maxToasts = 3;
 
         function setStatus(id, state, text, title) {
           var element = document.getElementById(id);
@@ -191,18 +201,44 @@
           }
         }
 
-        function showToast(message) {
+        function showToast(message, options) {
+          options = options || {};
           var stack = document.getElementById("toastStack");
           if (!stack) {
             return;
           }
+          message = clipMessage(message);
+          var key = options.key || String(message || "").replace(/\s+/g, " ").trim().toLowerCase();
+          var existing = activeToasts[key];
+          if (existing && existing.element && existing.element.parentNode) {
+            existing.count += 1;
+            existing.element.textContent = existing.count > 1 ? message + " (" + existing.count + "x)" : message;
+            window.clearTimeout(existing.timer);
+            existing.timer = window.setTimeout(function () {
+              existing.element.remove();
+              delete activeToasts[key];
+            }, options.duration || 9000);
+            return;
+          }
           var item = document.createElement("div");
-          item.className = "toast";
+          item.className = "toast" + (options.type ? " " + options.type : "");
           item.textContent = message;
           stack.appendChild(item);
-          setTimeout(function () {
+          activeToasts[key] = {
+            element: item,
+            count: 1,
+            timer: window.setTimeout(function () {
             item.remove();
-          }, 9000);
+              delete activeToasts[key];
+            }, options.duration || 9000)
+          };
+          while (stack.children.length > maxToasts) {
+            var first = stack.firstElementChild;
+            if (!first) {
+              break;
+            }
+            first.remove();
+          }
         }
 
         function fileSignature(file) {
@@ -218,10 +254,36 @@
               payload = { error: text || "The MacBook server returned an unreadable response." };
             }
             if (!response.ok) {
-              throw new Error(payload.error || "Request failed with HTTP " + response.status);
+              throw new Error(readableHttpError(payload, text, response));
             }
             return payload;
           });
+        }
+
+        function readableHttpError(payload, text, response) {
+          var raw = String((payload && payload.error) || text || "").trim();
+          var title = extractHtmlTitle(raw);
+          var detail = title || raw || response.statusText || "Request failed";
+          return clipMessage("Request failed with HTTP " + response.status + ": " + detail);
+        }
+
+        function extractHtmlTitle(value) {
+          var match = String(value || "").match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+          return match ? decodeHtmlEntities(match[1]).replace(/\s+/g, " ").trim() : "";
+        }
+
+        function decodeHtmlEntities(value) {
+          return String(value || "")
+            .replace(/&amp;/g, "&")
+            .replace(/&lt;/g, "<")
+            .replace(/&gt;/g, ">")
+            .replace(/&quot;/g, '"')
+            .replace(/&#039;/g, "'");
+        }
+
+        function clipMessage(value) {
+          var text = String(value || "").replace(/\s+/g, " ").trim();
+          return text.length > 520 ? text.slice(0, 517).trim() + "..." : text;
         }
 
         function bootstrapUploadPdf(file, input) {
@@ -252,7 +314,7 @@
             })
             .catch(function (error) {
               window.__CODEX_READER_BOOTSTRAP_UPLOAD_IN_FLIGHT = "";
-              showToast("Upload failed: " + (error.message || error));
+              showToast("Upload failed: " + (error.message || error), { type: "error" });
             });
         }
 
@@ -292,14 +354,14 @@
         }
 
         window.addEventListener("error", function (event) {
-          showToast("Script error: " + (event.message || "unknown error"));
+          showToast("Script error: " + (event.message || "unknown error"), { type: "error" });
         });
         window.addEventListener("unhandledrejection", function (event) {
           var reason = event.reason && (event.reason.message || event.reason);
-          showToast("Script promise error: " + (reason || "unknown error"));
+          showToast("Script promise error: " + (reason || "unknown error"), { type: "error" });
         });
         window.codexReaderScriptLoadFailed = function (src) {
-          showToast("Could not load script: " + src);
+          showToast("Could not load script: " + src, { type: "error" });
         };
 
         setStatus("serverStatus", "warn", "Connecting", "Inline bootstrap " + build + "\nGET /api/system/status");
@@ -345,11 +407,11 @@
               "MacBook offline",
               "Inline bootstrap failed: " + (error.message || error) + "\nAPI: /api/system/status\nBuild: " + build
             );
-            showToast("Status check failed: " + (error.message || error));
+            showToast("Status check failed: " + (error.message || error), { type: "error", key: "status-check" });
           });
       })();
     </script>
-    <script src="/config.js?v=20260703-default-followups-v2" onerror="window.codexReaderScriptLoadFailed && window.codexReaderScriptLoadFailed(this.src)"></script>
-    <script src="/app.js?v=20260703-default-followups-v2" onerror="window.codexReaderScriptLoadFailed && window.codexReaderScriptLoadFailed(this.src)"></script>
+    <script src="/config.js?v=20260704-toast-errors-v1" onerror="window.codexReaderScriptLoadFailed && window.codexReaderScriptLoadFailed(this.src)"></script>
+    <script src="/app.js?v=20260704-toast-errors-v1" onerror="window.codexReaderScriptLoadFailed && window.codexReaderScriptLoadFailed(this.src)"></script>
   </body>
 </html>

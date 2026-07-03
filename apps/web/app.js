@@ -8,6 +8,7 @@ const state = {
   analysisTab: "analysis",
   analysis: [],
   analysisJobs: new Map(),
+  lastError: null,
   manualJobs: {
     explain: null,
     fact_check: null
@@ -26,7 +27,7 @@ const API_DISCOVERY_URL = normalizeApiBase(window.CODEX_READER_CONFIG?.discovery
 const APP_API_BASE_STORAGE_KEY = window.CODEX_READER_CONFIG?.apiBaseStorageKey || "codexReaderApiBaseV2";
 const FORCE_API_DISCOVERY = Boolean(window.CODEX_READER_CONFIG?.forceDiscovery);
 const PREFER_SAME_ORIGIN_API = Boolean(window.CODEX_READER_CONFIG?.preferSameOriginApi);
-const APP_BUILD_VERSION = "20260703-default-followups-v2";
+const APP_BUILD_VERSION = "20260704-toast-errors-v1";
 const ACTIVE_PROMPT_VERSION = "2026-07-03-default-followup-style";
 const DEFAULT_FOLLOW_UP_QUESTIONS = Object.freeze({
   English: [
@@ -45,6 +46,8 @@ let discoveryPromise = null;
 let discoveryForcedOnce = false;
 let discoveredDirectApiBase = "";
 let statusErrorShown = false;
+let codexLoginErrorShown = false;
+const activeToasts = new Map();
 
 const els = {
   documentTitle: document.getElementById("documentTitle"),
@@ -88,6 +91,9 @@ const els = {
   analysisProgressPercent: document.getElementById("analysisProgressPercent"),
   analysisProgressBar: document.getElementById("analysisProgressBar"),
   analysisProgressMeta: document.getElementById("analysisProgressMeta"),
+  lastError: document.getElementById("lastError"),
+  lastErrorMessage: document.getElementById("lastErrorMessage"),
+  lastErrorDismissButton: document.getElementById("lastErrorDismissButton"),
   toastStack: document.getElementById("toastStack")
 };
 
@@ -167,6 +173,7 @@ function bindEvents() {
   });
   els.analysisTabButton.addEventListener("click", () => setAnalysisTab("analysis"));
   els.translationTabButton.addEventListener("click", () => setAnalysisTab("translation"));
+  els.lastErrorDismissButton?.addEventListener("click", clearLastError);
 }
 
 async function api(path, options = {}) {
@@ -226,9 +233,35 @@ async function parseApiResponse(response) {
     payload = { error: text || "The MacBook server returned an unreadable response." };
   }
   if (!response.ok) {
-    throw new Error(payload.error || `Request failed with HTTP ${response.status}`);
+    throw new Error(readableHttpError(payload, text, response));
   }
   return payload;
+}
+
+function readableHttpError(payload, text, response) {
+  const raw = String(payload?.error || text || "").trim();
+  const title = extractHtmlTitle(raw);
+  const detail = title || raw || response.statusText || "Request failed";
+  return clipMessage(`Request failed with HTTP ${response.status}: ${detail}`);
+}
+
+function extractHtmlTitle(value) {
+  const match = String(value || "").match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  return match ? decodeHtmlEntities(match[1]).replace(/\s+/g, " ").trim() : "";
+}
+
+function decodeHtmlEntities(value) {
+  return String(value || "")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#039;/g, "'");
+}
+
+function clipMessage(value, max = 520) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  return text.length > max ? `${text.slice(0, max - 3).trim()}...` : text;
 }
 
 async function fetchJson(url, options = {}) {
@@ -369,6 +402,34 @@ async function pollStatus() {
         status.codex_cli_available ? "Codex ready" : "Codex CLI not found"
       );
     }
+    if (status.codex_mode === "mock") {
+      codexLoginErrorShown = false;
+    } else if (!status.codex_cli_available) {
+      codexLoginErrorShown = false;
+    } else {
+      els.codexStatus.title = [
+        `Codex CLI: ${status.codex_command || "found"}`,
+        status.codex_model ? `Model: ${status.codex_model}` : "",
+        status.codex_login_status ? `Login: ${status.codex_login_status}` : "",
+        status.codex_auth_home ? `CODEX_HOME: ${status.codex_auth_home}` : ""
+      ]
+        .filter(Boolean)
+        .join("\n");
+      if (status.codex_login_ok === false) {
+        setStatus(els.codexStatus, false, "Codex login needed");
+        if (!codexLoginErrorShown) {
+          codexLoginErrorShown = true;
+          reportError(
+            new Error(`Codex CLI is not logged in. CODEX_HOME: ${status.codex_auth_home || "unknown"}`),
+            "Codex login needed",
+            { key: "codex-login-needed" }
+          );
+        }
+      } else {
+        codexLoginErrorShown = false;
+        setStatus(els.codexStatus, true, status.codex_web_search_ok ? "Codex ready" : "Codex ready, no search");
+      }
+    }
     setStatus(els.tunnelStatus, status.cloudflare_tunnel_ok, status.cloudflare_tunnel_ok ? "Tunnel online" : "Tunnel offline", true);
     const running = status.queue.running || 0;
     const queued = status.queue.queued || 0;
@@ -380,7 +441,7 @@ async function pollStatus() {
     console.error("Codex Reader status check failed", error);
     if (!statusErrorShown) {
       statusErrorShown = true;
-      toast(`Status check failed: ${error.message || error}`);
+      reportError(error, "Status check failed", { key: "status-check" });
     }
   }
 }
@@ -403,7 +464,7 @@ async function loadDocuments(options = {}) {
     if (options.silentNetworkError && error.isNetworkError) {
       return;
     }
-    toast(error.message);
+    reportError(error, "Documents failed");
   }
 }
 
@@ -470,7 +531,7 @@ async function deleteDocument(documentId, title, event) {
       renderAnalysisPanel();
     }
   } catch (error) {
-    toast(error.message);
+    reportError(error, "Delete failed");
   }
 }
 
@@ -503,7 +564,7 @@ async function uploadPdf(file) {
     await loadDocuments();
     await selectDocument(payload.document.id);
   } catch (error) {
-    toast(error.message);
+    reportError(error, "Upload failed", { key: `upload:${file?.name || ""}` });
   }
 }
 
@@ -518,7 +579,7 @@ async function importWebpage(url) {
     await loadDocuments();
     await selectDocument(payload.document.id);
   } catch (error) {
-    toast(error.message);
+    reportError(error, "Webpage import failed");
   }
 }
 
@@ -589,7 +650,7 @@ async function createAnalysisJob(scope) {
     toast(scope === "page" ? "Page analysis queued with Codex CLI." : "Document analysis queued with Codex CLI.");
     watchJob(payload.job.id);
   } catch (error) {
-    toast(error.message);
+    reportError(error, scope === "page" ? "Page analysis failed" : "Document analysis failed");
   }
 }
 
@@ -646,7 +707,7 @@ async function createManualJob(type) {
     toast(type === "fact_check" ? "Fact-check queued with Codex CLI." : "Explain queued with Codex CLI.");
     watchJob(jobPayload.job.id);
   } catch (error) {
-    toast(error.message);
+    reportError(error, type === "fact_check" ? "Fact-check failed" : "Explain failed");
   }
 }
 
@@ -685,7 +746,7 @@ async function createFollowUpJob(question) {
     toast("Follow-up question queued with Codex CLI.");
     watchJob(job.id);
   } catch (error) {
-    toast(error.message);
+    reportError(error, "Follow-up failed", { key: `follow-up:${question}` });
   }
 }
 
@@ -1083,12 +1144,96 @@ function surrounding(text, selection) {
   return text.slice(Math.max(0, index - 700), Math.min(text.length, index + selection.length + 700));
 }
 
-function toast(message) {
+function reportError(error, context = "Error", options = {}) {
+  const detail = errorMessage(error);
+  const message = detail.startsWith(`${context}:`) ? detail : `${context}: ${detail}`;
+  state.lastError = {
+    message,
+    at: new Date().toLocaleTimeString()
+  };
+  renderLastError();
+  console.error(message, error);
+  toast(message, {
+    type: "error",
+    key: options.key || `error:${context}:${detail}`,
+    duration: options.duration || 10000
+  });
+}
+
+function errorMessage(error) {
+  return clipMessage(error?.message || error || "Unknown error");
+}
+
+function renderLastError() {
+  if (!els.lastError || !els.lastErrorMessage) {
+    return;
+  }
+  if (!state.lastError) {
+    els.lastError.hidden = true;
+    els.lastErrorMessage.textContent = "";
+    return;
+  }
+  els.lastError.hidden = false;
+  els.lastErrorMessage.textContent = `${state.lastError.message} (${state.lastError.at})`;
+}
+
+function clearLastError() {
+  state.lastError = null;
+  renderLastError();
+}
+
+function toast(message, options = {}) {
+  const text = clipMessage(message);
+  if (!text || !els.toastStack) {
+    return;
+  }
+  const key = options.key || normalizeToastKey(text);
+  const existing = activeToasts.get(key);
+  if (existing && existing.element.isConnected) {
+    existing.count += 1;
+    existing.element.textContent = existing.count > 1 ? `${text} (${existing.count}x)` : text;
+    window.clearTimeout(existing.timer);
+    existing.timer = window.setTimeout(() => removeToast(key), options.duration || 6000);
+    return;
+  }
+
   const item = document.createElement("div");
-  item.className = "toast";
-  item.textContent = message;
+  item.className = `toast ${options.type || ""}`.trim();
+  item.dataset.toastKey = key;
+  item.textContent = text;
   els.toastStack.appendChild(item);
-  setTimeout(() => item.remove(), 4200);
+  activeToasts.set(key, {
+    element: item,
+    count: 1,
+    timer: window.setTimeout(() => removeToast(key), options.duration || 6000)
+  });
+  trimToastStack();
+}
+
+function removeToast(key) {
+  const toastRecord = activeToasts.get(key);
+  if (toastRecord) {
+    toastRecord.element.remove();
+    activeToasts.delete(key);
+  }
+}
+
+function trimToastStack() {
+  while (els.toastStack.children.length > 3) {
+    const first = els.toastStack.firstElementChild;
+    if (!first) {
+      return;
+    }
+    const key = first.dataset.toastKey || "";
+    first.remove();
+    if (key) {
+      activeToasts.delete(key);
+    }
+  }
+}
+
+function normalizeToastKey(value) {
+  return String(value || "").replace(/\s+/g, " ").trim().toLowerCase().slice(0, 240);
 }
 
 function cleanDisplayText(value) {

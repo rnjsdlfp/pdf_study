@@ -222,6 +222,21 @@ svg {
   display: none;
 }
 
+.plain-button {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 0;
+}
+
+.plain-button:hover {
+  color: var(--red);
+}
+
 .icon-button {
   width: 36px;
   padding: 0;
@@ -612,6 +627,33 @@ mark {
   line-height: 16px;
 }
 
+.last-error {
+  border: 1px solid rgba(180, 35, 24, 0.24);
+  border-radius: 8px;
+  background: #fff7f6;
+  color: var(--red);
+  font-size: 12px;
+  line-height: 1.45;
+  margin-bottom: 14px;
+  padding: 10px;
+}
+
+.last-error[hidden] {
+  display: none;
+}
+
+.last-error-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 5px;
+}
+
+.last-error-row strong {
+  color: var(--red);
+}
+
 .analysis-section {
   border-bottom: 1px solid var(--line);
   padding: 0 0 16px;
@@ -820,6 +862,11 @@ mark {
   box-shadow: var(--shadow);
   color: var(--text);
   font-size: 13px;
+}
+
+.toast.error {
+  border-color: rgba(180, 35, 24, 0.28);
+  color: var(--red);
 }
 
 @media (max-width: 1180px) {
