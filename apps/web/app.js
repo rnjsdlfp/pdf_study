@@ -114,20 +114,42 @@ function bindEvents() {
 }
 
 async function api(path, options = {}) {
-  const response = await fetch(apiUrl(path), {
-    headers: {
-      ...(options.body && !(options.body instanceof FormData) ? { "Content-Type": "application/json" } : {}),
-      ...(options.headers || {})
-    },
-    ...options
-  });
+  let response;
+  try {
+    response = await fetch(apiUrl(path), {
+      headers: {
+        ...(options.body && !(options.body instanceof FormData) ? { "Content-Type": "application/json" } : {}),
+        ...(options.headers || {})
+      },
+      ...options
+    });
+  } catch (error) {
+    throw new Error(networkFailureMessage(error));
+  }
 
   const text = await response.text();
-  const payload = text ? JSON.parse(text) : {};
+  let payload = {};
+  try {
+    payload = text ? JSON.parse(text) : {};
+  } catch {
+    payload = { error: text || "The MacBook server returned an unreadable response." };
+  }
   if (!response.ok) {
     throw new Error(payload.error || `Request failed with HTTP ${response.status}`);
   }
   return payload;
+}
+
+function networkFailureMessage(error) {
+  const message = error?.message || "";
+  if (/failed to fetch|networkerror|load failed/i.test(message)) {
+    return [
+      "Could not reach the MacBook server.",
+      "Open ★CodexReader.command on this Mac and keep it running, then try again.",
+      "If this happened during upload, the PDF may also be too large for the local connection."
+    ].join(" ");
+  }
+  return message || "Network request failed.";
 }
 
 function apiUrl(path) {

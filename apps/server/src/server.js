@@ -471,22 +471,42 @@ function readBuffer(request, maxBytes) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let total = 0;
+    let sizeError = null;
     request.on("data", (chunk) => {
       total += chunk.length;
       if (total > maxBytes) {
-        reject(httpError(413, "Request body is too large."));
-        request.destroy();
+        if (!sizeError) {
+          sizeError = httpError(413, `Request body is too large. Maximum size is ${formatBytes(maxBytes)}.`);
+          chunks.length = 0;
+        }
         return;
       }
-      chunks.push(chunk);
+      if (!sizeError) {
+        chunks.push(chunk);
+      }
     });
-    request.on("end", () => resolve(Buffer.concat(chunks)));
+    request.on("end", () => {
+      if (sizeError) {
+        reject(sizeError);
+        return;
+      }
+      resolve(Buffer.concat(chunks));
+    });
     request.on("error", reject);
   });
 }
 
+function formatBytes(bytes) {
+  if (bytes < 1024 * 1024) {
+    return `${bytes} bytes`;
+  }
+  const mb = bytes / 1024 / 1024;
+  return `${Number.isInteger(mb) ? mb : mb.toFixed(1)} MB`;
+}
+
 module.exports = {
   createApp,
+  formatBytes,
   httpError,
   readBuffer,
   withParsedJob

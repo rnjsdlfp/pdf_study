@@ -17,6 +17,8 @@ const {
 } = require("../apps/server/src/pdfExtractor");
 const { parseCodexJson } = require("../apps/server/src/codexAdapter");
 const { isPidAlive } = require("../apps/mac-runner/CodexReaderRunner");
+const { Readable } = require("node:stream");
+const { formatBytes, readBuffer } = require("../apps/server/src/server");
 
 test("cache keys are stable across object key order", () => {
   const a = makeCacheKey({ type: "page", payload: { page: 1, doc: "x" } });
@@ -88,4 +90,13 @@ test("Codex JSON parser finds final JSON object", () => {
 
 test("current process is not treated as duplicate runner", () => {
   assert.equal(isPidAlive(process.pid), false);
+});
+
+test("oversized request bodies return a 413 without destroying the stream early", async () => {
+  const stream = Readable.from([Buffer.alloc(4), Buffer.alloc(4)]);
+  await assert.rejects(() => readBuffer(stream, 6), {
+    statusCode: 413,
+    message: "Request body is too large. Maximum size is 6 bytes."
+  });
+  assert.equal(formatBytes(200 * 1024 * 1024), "200 MB");
 });

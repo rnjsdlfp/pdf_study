@@ -47,7 +47,7 @@ function createConfig(overrides = {}) {
       120000
     ),
     maxUploadBytes:
-      parseNumber(overrides.maxUploadMb || process.env.CODEX_READER_MAX_UPLOAD_MB, 50) *
+      parseNumber(overrides.maxUploadMb || process.env.CODEX_READER_MAX_UPLOAD_MB, 200) *
       1024 *
       1024,
     requireAccessJwt:
