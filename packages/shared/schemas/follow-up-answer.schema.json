@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Codex Reader Follow-up Answer",
+  "type": "object",
+  "required": ["question", "answer", "sources", "caveats"],
+  "properties": {
+    "question": { "type": "string" },
+    "answer": { "type": "string" },
+    "sources": { "type": "array" },
+    "caveats": { "type": "array", "items": { "type": "string" } }
+  }
+}

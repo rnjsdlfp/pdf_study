@@ -153,11 +153,42 @@ test("Codex execution args match automation defaults", () => {
 test("analysis prompt asks Codex for web-informed follow-up prompts", () => {
   const prompt = buildPrompt("document_analysis", {
     document_title: "Example",
+    output_language: "Korean",
     text: "A report argues demand growth will accelerate after a product launch."
   });
   assert.match(prompt, /Use web search to strengthen Follow-up Questions only/);
+  assert.match(prompt, /Output language for Follow-up Questions: Korean/);
   assert.match(prompt, /thought experiments/);
   assert.doesNotMatch(prompt, /\*\*/);
+});
+
+test("manual prompts include summary context and selected output language", () => {
+  const prompt = buildPrompt("selection_explain", {
+    document_title: "Example",
+    output_language: "Korean",
+    summary_context: "Demand is expected to accelerate as launch constraints fade.",
+    selection_text: "Reit OW PT to $39",
+    surrounding_text: "The report reiterates an overweight rating and price target."
+  });
+  assert.match(prompt, /Output language: Korean/);
+  assert.match(prompt, /Automatically extracted summary for context/);
+  assert.match(prompt, /Demand is expected to accelerate/);
+  assert.doesNotMatch(prompt, /right-sidebar/);
+});
+
+test("follow-up answer prompt uses search, full text, and language", () => {
+  const args = buildCodexArgs("follow_up_answer", {});
+  const prompt = buildPrompt("follow_up_answer", {
+    document_title: "Example",
+    output_language: "English",
+    summary_context: "The document argues demand is inflecting.",
+    selection_text: "What evidence would falsify this demand inflection thesis?",
+    document_text: "Page 1\nDemand is growing. Page 2\nRisks include reimbursement."
+  });
+  assert.equal(args.includes("--search"), true);
+  assert.match(prompt, /Output language: English/);
+  assert.match(prompt, /Full extracted document text/);
+  assert.match(prompt, /Use web search/);
 });
 
 test("current process is not treated as duplicate runner", () => {

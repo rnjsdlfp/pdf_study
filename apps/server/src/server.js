@@ -151,6 +151,7 @@ function createApp({ config, paths, store, eventHub, codexAdapter, worker, logge
         page_number: Number(body.page_number || 1),
         start_page: Number(body.start_page || 1),
         end_page: Number(body.end_page || document.page_count || 1),
+        output_language: normalizeOutputLanguage(body.output_language),
         rerun: Boolean(body.rerun)
       };
       const type = scope === "document" || scope === "range" ? JOB_TYPES.DOCUMENT_ANALYSIS : JOB_TYPES.PAGE_ANALYSIS;
@@ -160,7 +161,8 @@ function createApp({ config, paths, store, eventHub, codexAdapter, worker, logge
         file_hash: document.file_hash || document.url,
         page_number: payload.page_number,
         start_page: payload.start_page,
-        end_page: payload.end_page
+        end_page: payload.end_page,
+        output_language: payload.output_language
       });
       const job = store.createJob({
         document_id: document.id,
@@ -216,20 +218,25 @@ function createApp({ config, paths, store, eventHub, codexAdapter, worker, logge
       }
       const document = requireDocument(selection.document_id);
       const body = await readJson(request, 1024 * 1024);
-      const type =
-        body.type === "fact_check" ? JOB_TYPES.SELECTION_FACT_CHECK : JOB_TYPES.SELECTION_EXPLAIN;
+      const type = selectionJobType(body.type);
+      const outputLanguage = normalizeOutputLanguage(body.output_language);
       const cacheKey = makeCacheKey({
         type,
         document_id: document.id,
         file_hash: document.file_hash || document.url,
         selection_text: selection.selection_text,
-        surrounding_text: selection.surrounding_text
+        surrounding_text: selection.surrounding_text,
+        output_language: outputLanguage
       });
       const job = store.createJob({
         document_id: document.id,
         selection_id: selection.id,
         type,
-        payload: { cache_key: cacheKey, rerun: Boolean(body.rerun) },
+        payload: {
+          cache_key: cacheKey,
+          output_language: outputLanguage,
+          rerun: Boolean(body.rerun)
+        },
         cache_key: cacheKey,
         max_attempts: type === JOB_TYPES.SELECTION_FACT_CHECK ? 1 : 2
       });
@@ -503,6 +510,20 @@ function estimateJobProgress(job) {
     return { percent, label: "Codex CLI analyzing" };
   }
   return { percent: 0, label: "Waiting" };
+}
+
+function selectionJobType(type) {
+  if (type === "fact_check") {
+    return JOB_TYPES.SELECTION_FACT_CHECK;
+  }
+  if (type === "follow_up_answer") {
+    return JOB_TYPES.FOLLOW_UP_ANSWER;
+  }
+  return JOB_TYPES.SELECTION_EXPLAIN;
+}
+
+function normalizeOutputLanguage(value) {
+  return /^ko|korean$/i.test(String(value || "")) ? "Korean" : "English";
 }
 
 function sendJson(response, statusCode, payload) {

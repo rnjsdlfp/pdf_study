@@ -68,6 +68,17 @@ const factCheckSchema = {
   }
 };
 
+const followUpAnswerSchema = {
+  type: "object",
+  required: ["question", "answer", "sources", "caveats"],
+  properties: {
+    question: { type: "string" },
+    answer: { type: "string" },
+    sources: { type: "array" },
+    caveats: { type: "array", items: { type: "string" } }
+  }
+};
+
 function hasRequiredShape(value, schemaName) {
   if (!value || typeof value !== "object") {
     return false;
@@ -81,6 +92,10 @@ function hasRequiredShape(value, schemaName) {
     return selectionExplainSchema.required.every((field) => Object.prototype.hasOwnProperty.call(value, field));
   }
 
+  if (schemaName === "follow_up_answer") {
+    return followUpAnswerSchema.required.every((field) => Object.prototype.hasOwnProperty.call(value, field));
+  }
+
   return analysisSchema.required.every((field) => Object.prototype.hasOwnProperty.call(value, field));
 }
 
@@ -88,5 +103,6 @@ module.exports = {
   analysisSchema,
   selectionExplainSchema,
   factCheckSchema,
+  followUpAnswerSchema,
   hasRequiredShape
 };

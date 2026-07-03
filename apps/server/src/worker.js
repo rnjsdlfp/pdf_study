@@ -58,12 +58,12 @@ function createWorker({ store, eventHub, codexAdapter, logger }) {
       return;
     }
 
-    if (job.type === JOB_TYPES.SELECTION_FACT_CHECK) {
+    if (job.type === JOB_TYPES.SELECTION_FACT_CHECK || job.type === JOB_TYPES.FOLLOW_UP_ANSWER) {
       store.addSources(job.id, result.sources);
     }
 
     const expiresAt =
-      job.type === JOB_TYPES.SELECTION_FACT_CHECK
+      job.type === JOB_TYPES.SELECTION_FACT_CHECK || job.type === JOB_TYPES.FOLLOW_UP_ANSWER
         ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
         : "";
 
@@ -98,10 +98,18 @@ function createWorker({ store, eventHub, codexAdapter, logger }) {
     } else if (selection) {
       text = selection.selection_text;
     }
+    const documentText = store
+      .getPages(job.document_id)
+      .map((page) => `Page ${page.page_number}\n${page.text}`)
+      .join("\n\n");
+    const summaryContext = latestSummary(job.document_id, payload.output_language);
 
     return {
       document_title: document ? document.title : "Untitled",
       source_type: document ? document.source_type : "",
+      output_language: payload.output_language || "English",
+      summary_context: summaryContext,
+      document_text: documentText,
       text,
       selection_text: selection ? selection.selection_text : "",
       surrounding_text: selection ? selection.surrounding_text : ""
@@ -122,7 +130,21 @@ function createWorker({ store, eventHub, codexAdapter, logger }) {
     if (jobType === JOB_TYPES.SELECTION_EXPLAIN) {
       return "selection_explain";
     }
+    if (jobType === JOB_TYPES.FOLLOW_UP_ANSWER) {
+      return "follow_up_answer";
+    }
     return "analysis";
+  }
+
+  function latestSummary(documentId, outputLanguage) {
+    const latest = store.getAnalysis(documentId)[0]?.result || null;
+    if (!latest) {
+      return "";
+    }
+    const preferKorean = /^ko|korean$/i.test(String(outputLanguage || ""));
+    return preferKorean
+      ? latest.summary_ko || latest.summary_original || latest.summary || ""
+      : latest.summary_original || latest.summary || latest.summary_ko || "";
   }
 
   function emit(jobId, payload) {

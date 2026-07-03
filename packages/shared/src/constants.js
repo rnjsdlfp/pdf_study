@@ -1,11 +1,12 @@
-const PROMPT_VERSION = "2026-07-03-manual-prompts-web-followups";
+const PROMPT_VERSION = "2026-07-03-language-followup-answer";
 const SCHEMA_VERSION = "3";
 
 const JOB_TYPES = Object.freeze({
   PAGE_ANALYSIS: "page_analysis",
   DOCUMENT_ANALYSIS: "document_analysis",
   SELECTION_EXPLAIN: "selection_explain",
-  SELECTION_FACT_CHECK: "selection_fact_check"
+  SELECTION_FACT_CHECK: "selection_fact_check",
+  FOLLOW_UP_ANSWER: "follow_up_answer"
 });
 
 const JOB_STATUS = Object.freeze({

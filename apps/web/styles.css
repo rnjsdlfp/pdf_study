@@ -509,6 +509,23 @@ mark {
   margin-bottom: 14px;
 }
 
+.language-select-wrap {
+  min-width: 112px;
+}
+
+.language-select {
+  width: 100%;
+  min-height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 0 8px;
+}
+
 .analysis-tabs {
   display: inline-grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -609,7 +626,7 @@ mark {
 .manual-input {
   width: 100%;
   resize: vertical;
-  min-height: 86px;
+  min-height: 52px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fff;
@@ -724,6 +741,37 @@ mark {
 
 .question-list li {
   margin-bottom: 8px;
+}
+
+.question-button {
+  width: 100%;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text);
+  cursor: pointer;
+  display: block;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  padding: 9px 10px;
+  text-align: left;
+}
+
+.question-button:hover {
+  border-color: #b9c4d3;
+  background: #f8fbff;
+}
+
+.follow-up-answer {
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+  margin-top: 7px;
+  padding: 10px;
 }
 
 .job-status {
@@ -883,6 +931,7 @@ mark {
   }
 
   .analysis-tabs,
+  .language-select-wrap,
   .analysis-header .button {
     width: 100%;
   }

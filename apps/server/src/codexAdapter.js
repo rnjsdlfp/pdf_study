@@ -110,7 +110,8 @@ function buildCodexArgs(jobType, config = {}) {
   if (
     jobType === JOB_TYPES.PAGE_ANALYSIS ||
     jobType === JOB_TYPES.DOCUMENT_ANALYSIS ||
-    jobType === JOB_TYPES.SELECTION_FACT_CHECK
+    jobType === JOB_TYPES.SELECTION_FACT_CHECK ||
+    jobType === JOB_TYPES.FOLLOW_UP_ANSWER
   ) {
     args.push("--search");
   }
@@ -245,6 +246,8 @@ function uniqueList(values) {
 function buildPrompt(jobType, context) {
   const date = new Date().toISOString().slice(0, 10);
   const text = truncate(context.text || context.selection_text || "", jobType === JOB_TYPES.DOCUMENT_ANALYSIS ? 80000 : 12000);
+  const outputLanguage = normalizeOutputLanguage(context.output_language);
+  const summaryContext = truncate(context.summary_context || "", 3000) || "No analyzed summary is available yet.";
 
   if (jobType === JOB_TYPES.SELECTION_FACT_CHECK) {
     return [
@@ -252,9 +255,11 @@ function buildPrompt(jobType, context) {
       '{"claim":"string","verdict":"supported|contradicted|unclear|not_checkable","explanation_ko":"string","sources":[{"title":"string","url":"string","publisher":"string","published_date":"string","accessed_date":"' +
         date +
         '","relevance":"high|medium|low"}],"caveats":["string"],"confidence":"high|medium|low"}',
-      "This request came from the right-sidebar manual Fact-check input. Treat the user-provided text as the exact claim or claim bundle to verify. Use surrounding context only to understand wording, entities, dates, and units.",
+      `Output language: ${outputLanguage}. Write every human-readable string value in ${outputLanguage}, including explanation_ko and caveats, even when a field name contains a language suffix.`,
+      "Treat the user-provided text as the exact claim or claim bundle to verify. Use the summary and document context only to understand wording, entities, dates, and units.",
       "Use web search. Cite external sources. If the claim cannot be checked, use not_checkable. Use plain text only. Do not use Markdown, bold markers, headings, or double-asterisk emphasis markers anywhere in string values.",
       `Document title: ${context.document_title || "Untitled"}`,
+      `Automatically extracted summary for context:\n${summaryContext}`,
       `Claim or manual fact-check target:\n${text}`,
       `Document context:\n${truncate(context.surrounding_text || "", 4000)}`
     ].join("\n\n");
@@ -264,12 +269,31 @@ function buildPrompt(jobType, context) {
     return [
       "Return JSON only, matching this schema:",
       '{"explanation_original":"string","explanation_ko":"string","terms":[{"term":"string","definition_original":"string","definition_ko":"string"}],"translation_ko":"string","follow_up_questions":["string"]}',
-      "This request came from the right-sidebar manual Explain input. Explain the exact user-provided target text. Use surrounding context only to disambiguate the target, connect it to the document, and avoid overexplaining unrelated material.",
-      "Use the source document language for explanation_original and definition_original. Put Korean only in explanation_ko, definition_ko, and translation_ko. Do not use web search. Use plain text only. Do not use Markdown, bold markers, headings, or double-asterisk emphasis markers anywhere in string values.",
+      `Output language: ${outputLanguage}. Write every human-readable string value in ${outputLanguage}, including explanation_original, explanation_ko, definition fields, translation_ko, and follow_up_questions, even when a field name contains a language suffix.`,
+      "Explain the exact user-provided target text. Use the summary and surrounding context only to disambiguate the target, connect it to the document, and avoid overexplaining unrelated material.",
+      "Do not use web search. Use plain text only. Do not use Markdown, bold markers, headings, or double-asterisk emphasis markers anywhere in string values.",
       termSelectionInstruction(5),
       `Document title: ${context.document_title || "Untitled"}`,
+      `Automatically extracted summary for context:\n${summaryContext}`,
       `Manual explain target:\n${text}`,
       `Surrounding context:\n${truncate(context.surrounding_text || "", 4000)}`
+    ].join("\n\n");
+  }
+
+  if (jobType === JOB_TYPES.FOLLOW_UP_ANSWER) {
+    return [
+      "Return JSON only, matching this schema:",
+      '{"question":"string","answer":"string","sources":[{"title":"string","url":"string","publisher":"string","published_date":"string","accessed_date":"' +
+        date +
+        '","relevance":"high|medium|low"}],"caveats":["string"]}',
+      `Output language: ${outputLanguage}. Write every human-readable string value in ${outputLanguage}.`,
+      "Use web search and the full extracted document text. Answer the clicked follow-up question directly, then connect the answer back to the document's thesis, evidence, and uncertainties.",
+      "Use the full extracted text as context and background knowledge, not as a quote dump. Prefer concise reasoning, useful caveats, and external sources that materially improve the answer.",
+      "Use plain text only. Do not use Markdown, bold markers, headings, bullet syntax, or double-asterisk emphasis markers anywhere in string values.",
+      `Document title: ${context.document_title || "Untitled"}`,
+      `Automatically extracted summary for context:\n${summaryContext}`,
+      `Clicked follow-up question:\n${text}`,
+      `Full extracted document text:\n${truncate(context.document_text || "", 80000)}`
     ].join("\n\n");
   }
 
@@ -279,6 +303,7 @@ function buildPrompt(jobType, context) {
     "Use Codex CLI reasoning for every field. Analyze the source text in the source language for summary_original, definition_original, and follow_up_questions_original. Put Korean only in summary_ko, definition_ko, follow_up_questions_ko, full_text_translation_ko, and translation_ko.",
     "translation_ko must be the same value as full_text_translation_ko for backward compatibility. full_text_translation_ko should translate the provided extracted body text, preserving page cues and important numbers. Keep Summary and Terms concise and useful for research reading.",
     "Use web search to strengthen Follow-up Questions only: ground the questions in the extracted text, current public context, and plausible counter-evidence. Do not turn follow-up questions into a source list.",
+    `Output language for Follow-up Questions: ${outputLanguage}. Write follow_up_questions_original, follow_up_questions_ko, and follow_up_questions in ${outputLanguage}.`,
     followUpQuestionsInstruction(),
     "Use plain text only. Do not use Markdown, bold markers, headings, bullet syntax, or double-asterisk emphasis markers anywhere in string values.",
     termSelectionInstruction(10),
@@ -289,7 +314,12 @@ function buildPrompt(jobType, context) {
 }
 
 function requiresCodexCli(jobType) {
-  return [JOB_TYPES.PAGE_ANALYSIS, JOB_TYPES.DOCUMENT_ANALYSIS, JOB_TYPES.SELECTION_EXPLAIN].includes(jobType);
+  return [
+    JOB_TYPES.PAGE_ANALYSIS,
+    JOB_TYPES.DOCUMENT_ANALYSIS,
+    JOB_TYPES.SELECTION_EXPLAIN,
+    JOB_TYPES.FOLLOW_UP_ANSWER
+  ].includes(jobType);
 }
 
 function termSelectionInstruction(targetCount) {
@@ -298,6 +328,10 @@ function termSelectionInstruction(targetCount) {
     "Prioritize abbreviations, acronyms, tickers, metric names, endpoints, regulatory/commercial shorthand, and genuinely difficult domain-specific words.",
     "Prefer terms that affect interpretation of the document. Exclude generic business words, ordinary verbs/adjectives, boilerplate, and company names unless the abbreviation or ticker itself needs explanation."
   ].join(" ");
+}
+
+function normalizeOutputLanguage(value) {
+  return /^ko|korean$/i.test(String(value || "")) ? "Korean" : "English";
 }
 
 function followUpQuestionsInstruction() {
@@ -410,6 +444,15 @@ function fallbackResult(jobType, context, caveat) {
       terms: makeSpecializedTerms(text),
       translation_ko: makeTranslationNote(text),
       follow_up_questions: makeQuestions(text, true),
+      caveats: [caveat]
+    };
+  }
+
+  if (jobType === JOB_TYPES.FOLLOW_UP_ANSWER) {
+    return {
+      question: text,
+      answer: "Codex CLI follow-up answering was unavailable. Restart the MacBook server and run the question again.",
+      sources: [],
       caveats: [caveat]
     };
   }

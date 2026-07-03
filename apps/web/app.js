@@ -4,7 +4,7 @@ const state = {
   pages: [],
   currentPage: 1,
   zoom: 1,
-  showKoreanSidebar: false,
+  responseLanguage: "English",
   analysisTab: "analysis",
   analysis: [],
   analysisJobs: new Map(),
@@ -12,6 +12,7 @@ const state = {
     explain: null,
     fact_check: null
   },
+  followUpJobs: new Map(),
   manualJobTypes: new Map(),
   eventSources: new Map()
 };
@@ -25,7 +26,7 @@ const API_DISCOVERY_URL = normalizeApiBase(window.CODEX_READER_CONFIG?.discovery
 const APP_API_BASE_STORAGE_KEY = window.CODEX_READER_CONFIG?.apiBaseStorageKey || "codexReaderApiBaseV2";
 const FORCE_API_DISCOVERY = Boolean(window.CODEX_READER_CONFIG?.forceDiscovery);
 const PREFER_SAME_ORIGIN_API = Boolean(window.CODEX_READER_CONFIG?.preferSameOriginApi);
-const APP_BUILD_VERSION = "20260703-manual-prompts";
+const APP_BUILD_VERSION = "20260703-language-followups";
 let discoveryCheckedAt = 0;
 let discoveryPromise = null;
 let discoveryForcedOnce = false;
@@ -55,7 +56,7 @@ const els = {
   pdfPreview: document.getElementById("pdfPreview"),
   viewerGrid: document.querySelector(".viewer-grid"),
   readerSurface: document.getElementById("readerSurface"),
-  translateButton: document.getElementById("translateButton"),
+  languageSelect: document.getElementById("languageSelect"),
   summarySection: document.getElementById("summarySection"),
   translationSection: document.getElementById("translationSection"),
   questionsSection: document.getElementById("questionsSection"),
@@ -147,12 +148,12 @@ function bindEvents() {
   els.manualFactCheckInput.addEventListener("input", renderManualTools);
   els.manualExplainButton.addEventListener("click", () => createManualJob("explain"));
   els.manualFactCheckButton.addEventListener("click", () => createManualJob("fact_check"));
-  els.analysisTabButton.addEventListener("click", () => setAnalysisTab("analysis"));
-  els.translationTabButton.addEventListener("click", () => setAnalysisTab("translation"));
-  els.translateButton.addEventListener("click", () => {
-    state.showKoreanSidebar = !state.showKoreanSidebar;
+  els.languageSelect.addEventListener("change", () => {
+    state.responseLanguage = els.languageSelect.value === "Korean" ? "Korean" : "English";
     renderAnalysisPanel();
   });
+  els.analysisTabButton.addEventListener("click", () => setAnalysisTab("analysis"));
+  els.translationTabButton.addEventListener("click", () => setAnalysisTab("translation"));
 }
 
 async function api(path, options = {}) {
@@ -420,7 +421,8 @@ async function selectDocument(documentId) {
   state.currentDocument = payload.document;
   state.pages = payload.pages || [];
   state.currentPage = 1;
-  state.showKoreanSidebar = false;
+  state.responseLanguage = "English";
+  els.languageSelect.value = state.responseLanguage;
   state.analysisTab = "analysis";
   resetManualJobs();
   els.documentTitle.textContent = state.currentDocument.title;
@@ -563,7 +565,8 @@ async function createAnalysisJob(scope) {
         scope,
         page_number: state.currentPage,
         start_page: 1,
-        end_page: state.currentDocument.page_count || 1
+        end_page: state.currentDocument.page_count || 1,
+        output_language: state.responseLanguage
       })
     });
     if (payload.job) {
@@ -582,6 +585,7 @@ function resetManualJobs() {
     explain: null,
     fact_check: null
   };
+  state.followUpJobs = new Map();
   state.manualJobTypes = new Map();
 }
 
@@ -613,7 +617,11 @@ async function createManualJob(type) {
     });
     const jobPayload = await api(`/api/selections/${selectionPayload.selection.id}/jobs`, {
       method: "POST",
-      body: JSON.stringify({ type, rerun: true })
+      body: JSON.stringify({
+        type,
+        output_language: state.responseLanguage,
+        rerun: true
+      })
     });
     const job = withParsedClientJob({
       ...jobPayload.job,
@@ -629,6 +637,45 @@ async function createManualJob(type) {
   }
 }
 
+async function createFollowUpJob(question) {
+  if (!state.currentDocument || !question) {
+    return;
+  }
+
+  try {
+    const selectionPayload = await api("/api/selections", {
+      method: "POST",
+      body: JSON.stringify({
+        document_id: state.currentDocument.id,
+        page_number: state.currentPage,
+        selection_text: question,
+        surrounding_text: "Follow-up question answer request. Use the full extracted document text on the server.",
+        rects: []
+      })
+    });
+    const jobPayload = await api(`/api/selections/${selectionPayload.selection.id}/jobs`, {
+      method: "POST",
+      body: JSON.stringify({
+        type: "follow_up_answer",
+        output_language: state.responseLanguage,
+        rerun: true
+      })
+    });
+    const job = withParsedClientJob({
+      ...jobPayload.job,
+      selection: selectionPayload.selection
+    });
+    const sideJobKey = `follow_up:${question}`;
+    state.followUpJobs.set(question, job);
+    state.manualJobTypes.set(job.id, sideJobKey);
+    renderAnalysisPanel();
+    toast("Follow-up question queued with Codex CLI.");
+    watchJob(job.id);
+  } catch (error) {
+    toast(error.message);
+  }
+}
+
 function watchJob(jobId) {
   if (state.eventSources.has(jobId)) {
     return;
@@ -638,13 +685,10 @@ function watchJob(jobId) {
   source.addEventListener("job", async (event) => {
     const payload = JSON.parse(event.data);
     const job = payload.job ? withParsedClientJob(payload.job) : null;
-    const manualType = job ? state.manualJobTypes.get(job.id) : "";
-    if (job && manualType) {
-      state.manualJobs[manualType] = {
-        ...(state.manualJobs[manualType] || {}),
-        ...job
-      };
-      renderManualTools();
+    const sideJobKey = job ? state.manualJobTypes.get(job.id) : "";
+    if (job && sideJobKey) {
+      applySideJobUpdate(sideJobKey, job);
+      renderSideJobUpdate(sideJobKey);
     } else if (job && !job.selection_id) {
       state.analysisJobs.set(job.id, job);
       renderAnalysisPanel();
@@ -652,8 +696,8 @@ function watchJob(jobId) {
     if (job && isTerminalStatus(job.status)) {
       source.close();
       state.eventSources.delete(jobId);
-      if (manualType) {
-        await refreshManualJob(job.id, manualType);
+      if (sideJobKey) {
+        await refreshSideJob(job.id, sideJobKey);
       } else {
         await refreshPanels();
       }
@@ -685,10 +729,10 @@ async function refreshAnalysis() {
   }
 }
 
-async function refreshManualJob(jobId, manualType) {
+async function refreshSideJob(jobId, sideJobKey) {
   const payload = await api(`/api/jobs/${jobId}`);
-  state.manualJobs[manualType] = withParsedClientJob(payload.job);
-  renderManualTools();
+  applySideJobUpdate(sideJobKey, withParsedClientJob(payload.job));
+  renderSideJobUpdate(sideJobKey);
 }
 
 async function syncActiveJobs() {
@@ -696,8 +740,11 @@ async function syncActiveJobs() {
     return;
   }
   const activeAnalysis = [...state.analysisJobs.values()].some((job) => !job.selection_id && !isTerminalStatus(job.status));
-  const activeManualJobs = Object.entries(state.manualJobs).filter(([, job]) => job && !isTerminalStatus(job.status));
-  if (!activeAnalysis && activeManualJobs.length === 0) {
+  const activeSideJobs = [
+    ...Object.entries(state.manualJobs),
+    ...[...state.followUpJobs.entries()].map(([question, job]) => [`follow_up:${question}`, job])
+  ].filter(([, job]) => job && !isTerminalStatus(job.status));
+  if (!activeAnalysis && activeSideJobs.length === 0) {
     return;
   }
 
@@ -706,12 +753,35 @@ async function syncActiveJobs() {
       await refreshAnalysis();
       renderAnalysisPanel();
     }
-    for (const [manualType, job] of activeManualJobs) {
-      await refreshManualJob(job.id, manualType);
+    for (const [sideJobKey, job] of activeSideJobs) {
+      await refreshSideJob(job.id, sideJobKey);
     }
   } catch {
     // Status polling already surfaces connection issues; keep progress UI from throwing.
   }
+}
+
+function applySideJobUpdate(sideJobKey, job) {
+  if (sideJobKey.startsWith("follow_up:")) {
+    const question = sideJobKey.slice("follow_up:".length);
+    state.followUpJobs.set(question, {
+      ...(state.followUpJobs.get(question) || {}),
+      ...job
+    });
+    return;
+  }
+  state.manualJobs[sideJobKey] = {
+    ...(state.manualJobs[sideJobKey] || {}),
+    ...job
+  };
+}
+
+function renderSideJobUpdate(sideJobKey) {
+  if (sideJobKey.startsWith("follow_up:")) {
+    renderAnalysisPanel();
+    return;
+  }
+  renderManualTools();
 }
 
 function renderAnalysisPanel() {
@@ -721,7 +791,7 @@ function renderAnalysisPanel() {
 
   const latestJob = state.analysis[0] || null;
   const latest = latestJob?.result || null;
-  const useKorean = state.showKoreanSidebar;
+  const useKorean = state.responseLanguage === "Korean";
   els.summarySection.textContent = cleanDisplayText(useKorean
     ? latest?.summary_ko || latest?.summary_original || latest?.summary || state.currentDocument?.status_message || "Ready to analyze"
     : latest?.summary_original || latest?.summary || latest?.summary_ko || state.currentDocument?.status_message || "Ready to analyze");
@@ -737,12 +807,23 @@ function renderAnalysisPanel() {
   }
   for (const question of questions) {
     const item = document.createElement("li");
-    item.textContent = cleanDisplayText(question);
+    const cleanQuestion = cleanDisplayText(question);
+    const button = document.createElement("button");
+    button.className = "question-button";
+    button.type = "button";
+    button.textContent = cleanQuestion;
+    button.addEventListener("click", () => createFollowUpJob(cleanQuestion));
+    item.appendChild(button);
+    const job = state.followUpJobs.get(cleanQuestion);
+    if (job) {
+      const output = document.createElement("div");
+      output.className = "follow-up-answer";
+      output.innerHTML = renderFollowUpAnswer(job);
+      item.appendChild(output);
+    }
     els.questionsSection.appendChild(item);
   }
 
-  els.translateButton.disabled = !latest;
-  els.translateButton.textContent = state.showKoreanSidebar ? "Show Original" : "Translate Korean";
   els.translationSection.textContent = cleanDisplayText(fullTextTranslation());
 }
 
@@ -754,7 +835,6 @@ function renderAnalysisTabs() {
   els.translationTabButton.classList.toggle("active", translationActive);
   els.analysisTabButton.setAttribute("aria-selected", String(!translationActive));
   els.translationTabButton.setAttribute("aria-selected", String(translationActive));
-  els.translateButton.hidden = translationActive;
 }
 
 function setAnalysisTab(tab) {
@@ -898,12 +978,35 @@ function renderManualJobResult(type, job) {
       ${renderManualSources(result.sources || [])}
     `;
   }
-  const text = state.showKoreanSidebar
+  const text = state.responseLanguage === "Korean"
     ? result.explanation_ko || result.explanation_original || ""
     : result.explanation_original || result.explanation_ko || "";
   return `
     <span class="job-status ${status}">${status}</span>
     <div>${escapeHtml(cleanDisplayText(text || "No explanation returned."))}</div>
+  `;
+}
+
+function renderFollowUpAnswer(job) {
+  if (!job) {
+    return "";
+  }
+  const status = escapeHtml(job.status || "queued");
+  if (!isTerminalStatus(job.status)) {
+    const progress = job.progress || estimateClientProgress(job);
+    return `
+      <span class="job-status ${status}">${status}</span>
+      <div>${escapeHtml(progress.label || "Working")} - ${Math.max(0, Math.min(100, Number(progress.percent || 0)))}%</div>
+    `;
+  }
+  if (job.error) {
+    return `<span class="job-status ${status}">${status}</span><div>${escapeHtml(job.error)}</div>`;
+  }
+  const result = job.result || {};
+  return `
+    <span class="job-status ${status}">${status}</span>
+    <div>${escapeHtml(cleanDisplayText(result.answer || "No answer returned."))}</div>
+    ${renderManualSources(result.sources || [])}
   `;
 }
 
