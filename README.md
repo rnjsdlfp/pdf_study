@@ -51,6 +51,8 @@ If the status bar says `Codex CLI not found`, run this from Finder:
 
 It installs the official `@openai/codex` CLI into `~/.npm-global`, then offers to run `codex login`. The reader launchers already include `~/.npm-global/bin`, `~/.local/bin`, and `~/.codex/bin` in their search path.
 
+The Codex runner mirrors the working `research-wiki` automation style: it runs `codex exec` with `--skip-git-repo-check` and defaults to `CODEX_READER_CODEX_MODEL=gpt-5.5`. You can override the binary path with `CODEX_READER_CODEX_COMMAND=/path/to/codex`; if `CODEX_CLI_COMMAND` is already set in the environment, the reader also uses its first command word as a discovery hint.
+
 For development inside this repository, set `CODEX_READER_HOME=./.runtime` so runtime data stays inside the ignored workspace folder.
 
 ## What Is Implemented

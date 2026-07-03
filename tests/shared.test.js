@@ -15,7 +15,7 @@ const {
   stripPdfBoilerplate,
   isBoilerplateParagraph
 } = require("../apps/server/src/pdfExtractor");
-const { parseCodexJson, codexCommandCandidates } = require("../apps/server/src/codexAdapter");
+const { parseCodexJson, codexCommandCandidates, buildCodexArgs, firstCommandWord } = require("../apps/server/src/codexAdapter");
 const { isPidAlive } = require("../apps/mac-runner/CodexReaderRunner");
 const { Readable } = require("node:stream");
 const { formatBytes, readBuffer } = require("../apps/server/src/server");
@@ -97,6 +97,24 @@ test("Codex command lookup includes explicit and common paths", () => {
   if (process.platform === "darwin") {
     assert.equal(candidates.includes("/Applications/Codex.app/Contents/Resources/codex"), true);
   }
+});
+
+test("Codex execution args match automation defaults", () => {
+  const args = buildCodexArgs("document_analysis", {
+    codexModel: "gpt-5.5",
+    codexSkipGitRepoCheck: true
+  });
+  assert.deepEqual(args.slice(0, 8), [
+    "exec",
+    "--json",
+    "--ephemeral",
+    "--sandbox",
+    "read-only",
+    "--skip-git-repo-check",
+    "--model",
+    "gpt-5.5"
+  ]);
+  assert.equal(firstCommandWord("codex exec --skip-git-repo-check"), "codex");
 });
 
 test("current process is not treated as duplicate runner", () => {

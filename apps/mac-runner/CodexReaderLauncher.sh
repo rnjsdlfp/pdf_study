@@ -8,7 +8,7 @@ URL="http://${HOST}:${PORT}"
 RUNTIME_HOME="${CODEX_READER_HOME:-$HOME/Library/Application Support/CodexReader}"
 LOG_DIR="$RUNTIME_HOME/logs"
 LAUNCH_LOG="$LOG_DIR/launcher.log"
-MAC_RUNNER_PATH="$HOME/.npm-global/bin:$HOME/.local/bin:$HOME/.bun/bin:$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+MAC_RUNNER_PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$HOME/.npm-global/bin:$HOME/.local/bin:$HOME/.codex/bin:$HOME/.bun/bin:$HOME/.cargo/bin"
 export PATH="$MAC_RUNNER_PATH:${PATH:-}"
 CODEX_CLI_HELPER="$ROOT_DIR/infra/macos/codex-cli.sh"
 if [ -r "$CODEX_CLI_HELPER" ]; then

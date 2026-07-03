@@ -43,7 +43,7 @@ class CodexAdapter {
 
   async resolveCodexCommand() {
     if (this.config.codexCommand) {
-      return this.config.codexCommand;
+      return firstCommandWord(this.config.codexCommand) || this.config.codexCommand;
     }
     if (this.codexCommand) {
       return this.codexCommand;
@@ -69,10 +69,7 @@ class CodexAdapter {
     }
 
     const prompt = buildPrompt(jobType, context);
-    const args = ["exec", "--json", "--ephemeral", "--sandbox", "read-only"];
-    if (jobType === JOB_TYPES.SELECTION_FACT_CHECK) {
-      args.push("--search");
-    }
+    const args = buildCodexArgs(jobType, this.config);
     args.push(prompt);
 
     try {
@@ -102,6 +99,20 @@ class CodexAdapter {
   }
 }
 
+function buildCodexArgs(jobType, config = {}) {
+  const args = ["exec", "--json", "--ephemeral", "--sandbox", "read-only"];
+  if (config.codexSkipGitRepoCheck !== false) {
+    args.push("--skip-git-repo-check");
+  }
+  if (config.codexModel) {
+    args.push("--model", String(config.codexModel));
+  }
+  if (jobType === JOB_TYPES.SELECTION_FACT_CHECK) {
+    args.push("--search");
+  }
+  return args;
+}
+
 async function commandOk(command, args, timeout) {
   try {
     const result = await execFileAsync(command, args, {
@@ -116,7 +127,9 @@ async function commandOk(command, args, timeout) {
 }
 
 async function resolveCodexCommand() {
-  const explicit = process.env.CODEX_READER_CODEX_COMMAND || "";
+  const explicit =
+    firstCommandWord(process.env.CODEX_READER_CODEX_COMMAND || "") ||
+    firstCommandWord(process.env.CODEX_CLI_COMMAND || "");
   for (const candidate of codexCommandCandidates(explicit)) {
     const status = await commandOk(candidate, ["--version"], 3000);
     if (status.ok) {
@@ -132,6 +145,15 @@ async function resolveCodexCommand() {
   }
 
   return "";
+}
+
+function firstCommandWord(command) {
+  const text = String(command || "").trim();
+  if (!text) {
+    return "";
+  }
+  const match = text.match(/^"([^"]+)"|^'([^']+)'|^(\S+)/);
+  return match ? match[1] || match[2] || match[3] || "" : "";
 }
 
 function codexCommandCandidates(explicit = "") {
@@ -440,7 +462,9 @@ function truncate(value, max) {
 
 module.exports = {
   CodexAdapter,
+  buildCodexArgs,
   buildPrompt,
+  firstCommandWord,
   parseCodexJson,
   codexCommandCandidates,
   fallbackResult

@@ -2,7 +2,12 @@
 
 codex_reader_resolve_codex() {
   local explicit="${CODEX_READER_CODEX_COMMAND:-}"
+  local shared_command="${CODEX_CLI_COMMAND:-}"
   local candidate
+
+  if [ -z "$explicit" ] && [ -n "$shared_command" ]; then
+    explicit="$(codex_reader_first_command_word "$shared_command")"
+  fi
 
   if [ -n "$explicit" ]; then
     if codex_reader_command_ok "$explicit"; then
@@ -53,4 +58,23 @@ codex_reader_command_ok() {
   local command_path="$1"
   [ -n "$command_path" ] || return 1
   "$command_path" --version >/dev/null 2>&1
+}
+
+codex_reader_first_command_word() {
+  local raw="$1"
+  raw="${raw#"${raw%%[![:space:]]*}"}"
+  raw="${raw%"${raw##*[![:space:]]}"}"
+  case "$raw" in
+    \"*\")
+      raw="${raw#\"}"
+      printf '%s\n' "${raw%%\"*}"
+      ;;
+    \'*\')
+      raw="${raw#\'}"
+      printf '%s\n' "${raw%%\'*}"
+      ;;
+    *)
+      printf '%s\n' "${raw%%[[:space:]]*}"
+      ;;
+  esac
 }

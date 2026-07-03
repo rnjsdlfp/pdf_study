@@ -43,6 +43,10 @@ function createConfig(overrides = {}) {
     apiToken: overrides.apiToken || process.env.CODEX_READER_API_TOKEN || "",
     codexMode: overrides.codexMode || process.env.CODEX_READER_CODEX_MODE || "auto",
     codexCommand: overrides.codexCommand || process.env.CODEX_READER_CODEX_COMMAND || "",
+    codexModel: overrides.codexModel || process.env.CODEX_READER_CODEX_MODEL || "gpt-5.5",
+    codexSkipGitRepoCheck:
+      String(overrides.codexSkipGitRepoCheck || process.env.CODEX_READER_CODEX_SKIP_GIT_REPO_CHECK || "true") ===
+      "true",
     codexTimeoutMs: parseNumber(
       overrides.codexTimeoutMs || process.env.CODEX_READER_CODEX_TIMEOUT_MS,
       120000
