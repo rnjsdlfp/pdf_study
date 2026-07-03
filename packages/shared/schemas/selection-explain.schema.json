@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Codex Reader Selection Explain",
+  "type": "object",
+  "required": ["explanation_ko", "terms", "translation_ko", "follow_up_questions"],
+  "properties": {
+    "explanation_ko": { "type": "string" },
+    "terms": { "type": "array" },
+    "translation_ko": { "type": "string" },
+    "follow_up_questions": { "type": "array", "items": { "type": "string" } }
+  }
+}

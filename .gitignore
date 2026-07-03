@@ -1,0 +1,33 @@
+# Dependencies and package-manager output
+node_modules/
+pnpm-lock.yaml
+package-lock.json
+yarn.lock
+
+# Build and tool output
+dist/
+coverage/
+.wrangler/
+
+# Local secrets and auth
+.env
+.env.local
+.codex/
+
+# Runtime data must stay off Dropbox/Git
+.runtime/
+data/
+uploads/
+analysis-cache/
+docs/qa/*.png
+docs/qa/*.pdf
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.log
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

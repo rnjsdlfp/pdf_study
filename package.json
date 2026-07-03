@@ -1,0 +1,16 @@
+{
+  "name": "codex-pdf-web-research-reader",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local-first PDF and web research reader with Codex-backed analysis jobs.",
+  "scripts": {
+    "start": "node apps/mac-runner/CodexReaderRunner.js",
+    "server": "node apps/server/src/main.js",
+    "test": "node --test",
+    "build": "node scripts/build-check.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "UNLICENSED"
+}

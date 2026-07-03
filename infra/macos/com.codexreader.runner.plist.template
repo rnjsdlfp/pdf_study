@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.codexreader.runner</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/local/bin/node</string>
+    <string>__APP_ROOT__/apps/mac-runner/CodexReaderRunner.js</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>CODEX_READER_HOST</key>
+    <string>127.0.0.1</string>
+    <key>CODEX_READER_PORT</key>
+    <string>3001</string>
+    <key>CODEX_READER_HOME</key>
+    <string>__HOME__/Library/Application Support/CodexReader</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>__HOME__/Library/Application Support/CodexReader/logs/launchd.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>__HOME__/Library/Application Support/CodexReader/logs/launchd.err.log</string>
+</dict>
+</plist>

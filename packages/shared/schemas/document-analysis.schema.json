@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Codex Reader Document Analysis",
+  "type": "object",
+  "required": ["summary_ko", "terms", "translation_ko", "follow_up_questions"],
+  "properties": {
+    "summary_ko": { "type": "string" },
+    "terms": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["term", "definition_ko"],
+        "properties": {
+          "term": { "type": "string" },
+          "definition_ko": { "type": "string" }
+        }
+      }
+    },
+    "translation_ko": { "type": "string" },
+    "follow_up_questions": { "type": "array", "items": { "type": "string" } },
+    "sources": { "type": "array" }
+  }
+}
