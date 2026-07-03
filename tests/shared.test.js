@@ -6,7 +6,12 @@ const {
   sanitizeFilename,
   normalizeFactCheckResult
 } = require("../packages/shared/src");
-const { decodePdfToken, normalizeText } = require("../apps/server/src/pdfExtractor");
+const {
+  decodePdfToken,
+  normalizeText,
+  stripPdfBoilerplate,
+  isBoilerplateParagraph
+} = require("../apps/server/src/pdfExtractor");
 const { parseCodexJson } = require("../apps/server/src/codexAdapter");
 const { isPidAlive } = require("../apps/mac-runner/CodexReaderRunner");
 
@@ -39,6 +44,22 @@ test("fact-check normalization fills required fields", () => {
 test("PDF string decoder handles escapes", () => {
   assert.equal(decodePdfToken("(Hello\\nWorld\\0501\\051)"), "Hello\nWorld(1)");
   assert.equal(normalizeText("a   b\n\n\nc"), "a b\n\nc");
+});
+
+test("PDF boilerplate filtering removes disclaimers and keeps content", () => {
+  const cleaned = stripPdfBoilerplate(
+    [
+      "Revenue increased 12 percent in 2026.",
+      "",
+      "Disclaimer",
+      "",
+      "This material is for informational purposes only and is not investment advice. No warranty is made."
+    ].join("\n")
+  );
+  assert.equal(cleaned.text, "Revenue increased 12 percent in 2026.");
+  assert.equal(cleaned.removedCount, 2);
+  assert.equal(isBoilerplateParagraph("Copyright 2026 Example Corp. All rights reserved."), true);
+  assert.equal(isBoilerplateParagraph("This section explains warranty obligations in the contract."), false);
 });
 
 test("Codex JSON parser finds final JSON object", () => {

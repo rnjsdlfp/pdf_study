@@ -3,7 +3,9 @@ const { sha256 } = require("../../../packages/shared/src");
 
 function extractPdf(buffer) {
   const pageCount = Math.max(countPages(buffer), 1);
-  const text = normalizeText(extractTextFromStreams(buffer));
+  const extractedText = normalizeText(extractTextFromStreams(buffer));
+  const cleaned = stripPdfBoilerplate(extractedText);
+  const text = cleaned.text;
   const pages = splitIntoPages(text, pageCount);
   const confidence = text.length > 500 ? "medium" : text.length > 20 ? "low" : "none";
 
@@ -24,7 +26,10 @@ function extractPdf(buffer) {
   return {
     pageCount: pages.length,
     status: "ready",
-    statusMessage: "Ready to analyze",
+    statusMessage:
+      cleaned.removedCount > 0
+        ? `Ready to analyze. Removed ${cleaned.removedCount} boilerplate section(s).`
+        : "Ready to analyze",
     pages: pages.map((pageText, index) => ({
       page_number: index + 1,
       text: pageText,
@@ -163,6 +168,127 @@ function normalizeText(value) {
     .trim();
 }
 
+const BOILERPLATE_HEADINGS = [
+  /^disclaimer$/i,
+  /^important (notice|disclosures?)$/i,
+  /^legal notice$/i,
+  /^forward-looking statements?$/i,
+  /^safe harbor statement$/i,
+  /^confidentiality notice$/i,
+  /^\uBA74\uCC45(\s*\uACE0\uC9C0)?$/,
+  /^\uBC95\uC801\s*\uACE0\uC9C0$/,
+  /^\uC8FC\uC758\s*\uC0AC\uD56D$/
+];
+
+const BOILERPLATE_PATTERNS = [
+  /\bdisclaimer\b/i,
+  /\bforward-looking statements?\b/i,
+  /\bsafe harbor\b/i,
+  /\bno (representations?|warrant(?:y|ies))\b/i,
+  /\bwithout (?:any )?warrant(?:y|ies)\b/i,
+  /\bfor informational purposes only\b/i,
+  /\bnot (?:an? )?(?:investment|legal|tax|financial) advice\b/i,
+  /\bdo not (?:copy|distribute|redistribute)\b/i,
+  /\bunauthorized (?:use|copying|distribution|disclosure)\b/i,
+  /\ball rights reserved\b/i,
+  /\bcopyright\b/i,
+  /\bconfidential\b/i,
+  /\bprivileged\b/i,
+  /\bterms and conditions\b/i,
+  /\blimitation of liability\b/i,
+  /\uBA74\uCC45/,
+  /\uBB34\uB2E8\s*\uBC30\uD3EC/,
+  /\uBCF5\uC81C\s*\uBC0F\s*\uBC30\uD3EC\s*\uAE08\uC9C0/,
+  /\uD22C\uC790\s*\uC870\uC5B8/,
+  /\uBC95\uB960\s*\uC790\uBB38/,
+  /\uC815\uBCF4\s*\uC81C\uACF5\s*\uBAA9\uC801/
+];
+
+function stripPdfBoilerplate(text) {
+  const normalized = normalizeText(text);
+  if (!normalized) {
+    return { text: "", removedCount: 0 };
+  }
+
+  const tailStripped = stripTrailingBoilerplate(normalized);
+  const paragraphs = tailStripped.text.split(/\n{2,}/);
+  const kept = [];
+  let removedCount = tailStripped.removedCount;
+
+  for (const paragraph of paragraphs) {
+    const trimmed = paragraph.trim();
+    if (!trimmed) {
+      continue;
+    }
+
+    if (isBoilerplateParagraph(trimmed)) {
+      removedCount += 1;
+      continue;
+    }
+
+    kept.push(trimmed);
+  }
+
+  return {
+    text: kept.join("\n\n").trim(),
+    removedCount
+  };
+}
+
+function stripTrailingBoilerplate(text) {
+  const markers = [
+    /\n\s*disclaimer\s*\n/i,
+    /\n\s*important (?:notice|disclosures?)\s*\n/i,
+    /\n\s*legal notice\s*\n/i,
+    /\n\s*forward-looking statements?\s*\n/i,
+    /\n\s*safe harbor statement\s*\n/i,
+    /\n\s*\uBA74\uCC45(?:\s*\uACE0\uC9C0)?\s*\n/,
+    /\n\s*\uBC95\uC801\s*\uACE0\uC9C0\s*\n/,
+    /\n\s*\uC8FC\uC758\s*\uC0AC\uD56D\s*\n/
+  ];
+
+  for (const marker of markers) {
+    const match = marker.exec(`\n${text}\n`);
+    if (!match) {
+      continue;
+    }
+
+    const index = Math.max(0, match.index - 1);
+    const before = text.slice(0, index).trim();
+    const after = text.slice(index).trim();
+
+    if (before.length >= 300 && after.length <= Math.max(2500, before.length * 0.65)) {
+      return { text: before, removedCount: 1 };
+    }
+  }
+
+  return { text, removedCount: 0 };
+}
+
+function isBoilerplateParagraph(paragraph) {
+  const compact = paragraph.replace(/\s+/g, " ").trim();
+  if (!compact) {
+    return false;
+  }
+
+  if (BOILERPLATE_HEADINGS.some((pattern) => pattern.test(compact))) {
+    return true;
+  }
+
+  let score = 0;
+  for (const pattern of BOILERPLATE_PATTERNS) {
+    if (pattern.test(compact)) {
+      score += 1;
+    }
+  }
+
+  if (compact.length <= 160 && score >= 1 && /(disclaimer|notice|copyright|confidential|\uACE0\uC9C0|\uBA74\uCC45)/i.test(compact)) {
+    return true;
+  }
+
+  return score >= 2;
+}
+
 function splitIntoPages(text, pageCount) {
   if (!text) {
     return [""];
@@ -199,5 +325,7 @@ function splitIntoPages(text, pageCount) {
 module.exports = {
   extractPdf,
   decodePdfToken,
-  normalizeText
+  normalizeText,
+  stripPdfBoilerplate,
+  isBoilerplateParagraph
 };
