@@ -23,6 +23,7 @@ LOCAL_CURL_MAX_TIME="${CODEX_READER_LOCAL_CURL_MAX_TIME:-3}"
 PUBLIC_CURL_MAX_TIME="${CODEX_READER_PUBLIC_CURL_MAX_TIME:-8}"
 REGISTER_CURL_MAX_TIME="${CODEX_READER_REGISTER_CURL_MAX_TIME:-20}"
 CODEX_CLI_HELPER="$ROOT_DIR/infra/macos/codex-cli.sh"
+TUNNEL_PID=""
 export npm_config_cache="$NPM_CACHE_DIR"
 export NPM_CONFIG_CACHE="$NPM_CACHE_DIR"
 export npm_config_update_notifier=false
@@ -77,6 +78,20 @@ notify() {
   if command -v osascript >/dev/null 2>&1; then
     osascript -e "display notification \"$message\" with title \"$title\"" >/dev/null 2>&1 || true
   fi
+}
+
+mark_tunnel_stopped() {
+  write_status false 0 "$TUNNEL_URL"
+}
+
+stop_tunnel_and_exit() {
+  mark_tunnel_stopped
+  if [ -n "${TUNNEL_PID:-}" ] && kill -0 "$TUNNEL_PID" >/dev/null 2>&1; then
+    kill "$TUNNEL_PID" >/dev/null 2>&1 || true
+  fi
+  print_line ""
+  print_line "Codex Reader Tunnel stopped."
+  exit 0
 }
 
 write_status() {
@@ -141,13 +156,32 @@ register_tunnel_url() {
   payload="$(node -e 'console.log(JSON.stringify({ apiBase: process.argv[1] }))' "$url")"
   if response="$(curl -fsS --connect-timeout 5 --max-time "$REGISTER_CURL_MAX_TIME" -X POST -H "Content-Type: application/json" --data "$payload" "$DISCOVERY_URL/register" 2>&1)"; then
     printf '%s\n' "$response" >> "$TUNNEL_LOG"
-    printf '\n[%s] Registered tunnel with discovery service: %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$DISCOVERY_URL" >> "$TUNNEL_LOG"
-    return 0
+    if node -e 'const payload = JSON.parse(process.argv[1]); process.exit(payload && payload.ok === true ? 0 : 1);' "$response" >/dev/null 2>&1; then
+      printf '\n[%s] Registered tunnel with discovery service: %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$DISCOVERY_URL" >> "$TUNNEL_LOG"
+      return 0
+    fi
+    printf '\n[%s] Discovery registration returned non-ok response: %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$response" >> "$TUNNEL_LOG"
+    return 1
   else
     exit_code=$?
     printf '\n[%s] Discovery registration failed: %s (curl exit %s)\n%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$DISCOVERY_URL" "$exit_code" "$response" >> "$TUNNEL_LOG"
     return 1
   fi
+}
+
+keep_tunnel_running() {
+  local url="$1"
+  print_line ""
+  print_line "Tunnel is online: $url"
+  print_line "Keep this Terminal window open while using Codex Reader from other devices."
+  print_line "Press Control-C to stop the tunnel."
+  print_line ""
+  trap stop_tunnel_and_exit INT TERM
+  wait "$TUNNEL_PID"
+  local exit_code=$?
+  mark_tunnel_stopped
+  show_message "Codex Reader Tunnel" "The Tunnel process stopped. Other devices will show MacBook offline until you run ★CodexReader Tunnel.command again."
+  exit "$exit_code"
 }
 
 if [ ! -d "$ROOT_DIR/apps/mac-runner" ]; then
@@ -275,7 +309,7 @@ for _ in $(seq 1 45); do
         write_status true "$TUNNEL_PID" "$TUNNEL_URL"
         open_pages "$TUNNEL_URL"
         notify "Codex Reader Tunnel" "Tunnel is online at $TUNNEL_URL"
-        exit 0
+        keep_tunnel_running "$TUNNEL_URL"
       fi
     fi
   fi
@@ -283,10 +317,11 @@ for _ in $(seq 1 45); do
   if [ -n "$TUNNEL_URL" ] && http_ok "$TUNNEL_URL/health" "$PUBLIC_CURL_MAX_TIME"; then
     log_tunnel "Public tunnel health check passed"
     write_status true "$TUNNEL_PID" "$TUNNEL_URL"
-    register_tunnel_url "$TUNNEL_URL" || true
-    open_pages "$TUNNEL_URL"
-    notify "Codex Reader Tunnel" "Tunnel is online at $TUNNEL_URL"
-    exit 0
+    if register_tunnel_url "$TUNNEL_URL"; then
+      open_pages "$TUNNEL_URL"
+      notify "Codex Reader Tunnel" "Tunnel is online at $TUNNEL_URL"
+      keep_tunnel_running "$TUNNEL_URL"
+    fi
   fi
   sleep 2
 done

@@ -41,6 +41,8 @@ The Tunnel launcher uses Cloudflare Quick Tunnel by default. It creates a tempor
 
 After the MacBook Tunnel launcher is running, other computers can open `https://pdf-study.pages.dev/` directly. The frontend asks the discovery Worker for the latest MacBook tunnel URL before it marks the MacBook offline.
 
+Keep the `★CodexReader Tunnel.command` Terminal window open while using the reader from other devices. If that window shows `[Process completed]` or is closed, the temporary Cloudflare Tunnel has stopped and other devices will show `MacBook offline`.
+
 The launcher uses app-local caches under `~/Library/Application Support/CodexReader`, so `npx wrangler login` is not required for the default Quick Tunnel flow.
 
 If the status bar says `Codex CLI not found`, run this from Finder:
