@@ -15,7 +15,7 @@ const {
   stripPdfBoilerplate,
   isBoilerplateParagraph
 } = require("../apps/server/src/pdfExtractor");
-const { parseCodexJson } = require("../apps/server/src/codexAdapter");
+const { parseCodexJson, codexCommandCandidates } = require("../apps/server/src/codexAdapter");
 const { isPidAlive } = require("../apps/mac-runner/CodexReaderRunner");
 const { Readable } = require("node:stream");
 const { formatBytes, readBuffer } = require("../apps/server/src/server");
@@ -86,6 +86,13 @@ test("PDF ToUnicode CMap decoding restores encoded glyphs", () => {
 test("Codex JSON parser finds final JSON object", () => {
   const parsed = parseCodexJson('{"type":"event"}\n{"message":"result: {\\"ok\\":true}"}');
   assert.equal(parsed.ok, true);
+});
+
+test("Codex command lookup includes explicit and common macOS paths", () => {
+  const candidates = codexCommandCandidates("/custom/bin/codex");
+  assert.equal(candidates[0], "/custom/bin/codex");
+  assert.equal(candidates.includes("codex") || candidates.includes("codex.cmd"), true);
+  assert.equal(candidates.some((candidate) => /[\\/]opt[\\/]homebrew[\\/]bin[\\/]codex/.test(candidate)), true);
 });
 
 test("current process is not treated as duplicate runner", () => {

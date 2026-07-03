@@ -8,6 +8,8 @@ URL="http://${HOST}:${PORT}"
 RUNTIME_HOME="${CODEX_READER_HOME:-$HOME/Library/Application Support/CodexReader}"
 LOG_DIR="$RUNTIME_HOME/logs"
 LAUNCH_LOG="$LOG_DIR/launcher.log"
+MAC_RUNNER_PATH="$HOME/.npm-global/bin:$HOME/.local/bin:$HOME/.bun/bin:$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+export PATH="$MAC_RUNNER_PATH:${PATH:-}"
 
 show_message() {
   local title="$1"
@@ -43,12 +45,17 @@ export CODEX_READER_HOME="$RUNTIME_HOME"
 export CODEX_READER_HOST="$HOST"
 export CODEX_READER_PORT="$PORT"
 export CODEX_READER_CODEX_MODE="${CODEX_READER_CODEX_MODE:-auto}"
+if [ -z "${CODEX_READER_CODEX_COMMAND:-}" ] && command -v codex >/dev/null 2>&1; then
+  export CODEX_READER_CODEX_COMMAND="$(command -v codex)"
+fi
 
 cd "$ROOT_DIR"
 
 {
   printf '\n[%s] Launch requested from %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$ROOT_DIR"
   printf '[%s] Runtime home: %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$RUNTIME_HOME"
+  printf '[%s] PATH: %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$PATH"
+  printf '[%s] Codex command: %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "${CODEX_READER_CODEX_COMMAND:-not found in launcher PATH}"
 } >> "$LAUNCH_LOG"
 
 nohup node "$ROOT_DIR/apps/mac-runner/CodexReaderRunner.js" >> "$LAUNCH_LOG" 2>&1 &

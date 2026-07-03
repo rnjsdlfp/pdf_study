@@ -29,7 +29,7 @@ If macOS says the file could not be executed because you do not have access priv
 bash ./fix-mac-permissions.sh
 ```
 
-When you open `https://pdf-study.pages.dev/`, the web UI connects to the Cloudflare Tunnel API at `https://reader-api.futurecontext.net`. To force same-Mac local mode, open `https://pdf-study.pages.dev/?apiBase=http://127.0.0.1:3001`.
+When you open `https://pdf-study.pages.dev/` on the same MacBook, the web UI connects to `http://127.0.0.1:3001`.
 
 For access from another device, use the Tunnel launcher:
 
@@ -37,7 +37,7 @@ For access from another device, use the Tunnel launcher:
 ★CodexReader Tunnel.command
 ```
 
-The configured Tunnel is `codex-reader` and the API hostname is `https://reader-api.futurecontext.net`. The Cloudflare DNS CNAME must point `reader-api.futurecontext.net` to `7b63dd79-b0f5-410c-a5f1-16f3b86e7ca2.cfargotunnel.com`.
+The Tunnel launcher uses Cloudflare Quick Tunnel by default. It creates a temporary `https://*.trycloudflare.com` API URL, opens Pages with that URL in `apiBase`, and does not require a custom DNS record.
 
 For development inside this repository, set `CODEX_READER_HOME=./.runtime` so runtime data stays inside the ignored workspace folder.
 

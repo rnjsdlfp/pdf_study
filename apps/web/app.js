@@ -168,8 +168,8 @@ function networkFailureMessage(error, context = {}) {
   if (/failed to fetch|networkerror|load failed/i.test(message)) {
     const base = [
       "Could not reach the MacBook server.",
-      "Open ★CodexReader.command on this Mac and keep it running.",
-      "If you opened this page on another device, 127.0.0.1 points to that device, not the MacBook."
+      "On the MacBook, open ★CodexReader.command for local use or ★CodexReader Tunnel.command for other devices.",
+      "If you opened this page on another device without the Tunnel launcher URL, 127.0.0.1 points to that device, not the MacBook."
     ];
     if (context.uploadRequest) {
       base.push("If this happened during upload, also check that the PDF is under the upload limit.");

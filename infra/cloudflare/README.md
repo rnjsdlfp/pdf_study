@@ -1,91 +1,59 @@
 # Cloudflare Deployment Notes
 
-## Current Tunnel
+## Default: Quick Tunnel
 
-```text
-Cloudflare account: Jirehkwon@gmail.com's Account
-Tunnel name: codex-reader
-Tunnel ID: 7b63dd79-b0f5-410c-a5f1-16f3b86e7ca2
-API hostname: reader-api.futurecontext.net
-Local service: http://127.0.0.1:3001
-```
-
-The Tunnel ingress is configured in Cloudflare:
-
-```text
-reader-api.futurecontext.net -> http://127.0.0.1:3001
-```
-
-The remaining DNS record is:
-
-```text
-Type: CNAME
-Name: reader-api
-Target: 7b63dd79-b0f5-410c-a5f1-16f3b86e7ca2.cfargotunnel.com
-Proxy status: Proxied
-```
-
-This repository includes a macOS launcher:
+The repository uses Cloudflare Quick Tunnel by default:
 
 ```bash
 ./★CodexReader\ Tunnel.command
 ```
 
-It starts the local server if needed, starts the Cloudflare Tunnel with Wrangler, waits for `https://reader-api.futurecontext.net/health`, then opens:
+The launcher starts the local API at `http://127.0.0.1:3001`, starts a temporary `https://*.trycloudflare.com` tunnel, waits for `/health`, then opens:
 
 ```text
-https://pdf-study.pages.dev/?apiBase=https%3A%2F%2Freader-api.futurecontext.net
+https://pdf-study.pages.dev/?apiBase=<temporary tunnel URL>
 ```
 
-On the first MacBook run, authenticate Wrangler once:
+This default mode does not need a custom domain or DNS record. The tunnel URL changes when the tunnel restarts.
+
+## Optional: Named Tunnel
+
+Use a named tunnel only after choosing a project-owned domain, for example:
+
+```text
+reader-api.your-project-domain.com
+```
+
+Then set these environment variables on the MacBook before launching:
 
 ```bash
-npx wrangler login
+export CODEX_READER_TUNNEL_MODE=named
+export CODEX_READER_TUNNEL_ID="<cloudflare tunnel id>"
+export CODEX_READER_TUNNEL_URL="https://reader-api.your-project-domain.com"
 ```
 
-## Target Routes
+The required DNS record would be:
 
 ```text
-app.yourdomain.com
-  -> Cloudflare Pages static web build
-
-reader-api.futurecontext.net
-  -> Cloudflare Tunnel
-  -> http://127.0.0.1:3001 on the MacBook
+Type: CNAME
+Name: reader-api
+Target: <tunnel-id>.cfargotunnel.com
+Proxy status: Proxied
 ```
 
 ## Access
 
-Create two Cloudflare Access applications before treating this as private production traffic:
+Before treating this as private production traffic, create Cloudflare Access applications for:
 
 - `pdf-study.pages.dev` or a custom Pages domain
-- `reader-api.futurecontext.net`
+- the chosen API tunnel hostname, if using named tunnel mode
 
-Allow only the owner's email or identity provider group. Keep Access enforcement on both the app and API hostnames.
-
-## Tunnel
-
-Current ingress:
-
-```yaml
-ingress:
-  - hostname: reader-api.futurecontext.net
-    service: http://127.0.0.1:3001
-  - service: http_status:404
-```
+Allow only the owner's email or identity provider group.
 
 ## Pages
 
-This MVP serves the web UI from the local Node server too. For Pages deployment, publish `apps/web` as static assets.
+The deployed frontend reads its API origin from `apps/web/config.js`.
 
-The deployed frontend reads its API origin from `apps/web/config.js`. The default Pages API is:
-
-```text
-https://pdf-study.pages.dev/?apiBase=https://reader-api.futurecontext.net
-```
-
-If you deploy before the Tunnel hostname is ready, the UI still loads, but API-backed actions will only work after `apiBase` points at the Access-protected Tunnel hostname.
-
-## Current MVP Limit
-
-Cloudflare Access JWT cryptographic verification is represented as a server switch, but issuer/audience key validation still needs to be wired after the real Access app IDs are known.
+- On the same MacBook, Pages defaults to `http://127.0.0.1:3001`.
+- For another device, use the URL opened by `★CodexReader Tunnel.command`.
+- A custom API hostname can still be provided with `?apiBase=https://...`.

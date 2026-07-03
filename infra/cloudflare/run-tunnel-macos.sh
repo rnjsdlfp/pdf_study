@@ -6,14 +6,17 @@ PORT="${CODEX_READER_PORT:-3001}"
 HOST="${CODEX_READER_HOST:-127.0.0.1}"
 LOCAL_URL="http://${HOST}:${PORT}"
 PAGES_URL="${CODEX_READER_PAGES_URL:-https://pdf-study.pages.dev}"
-TUNNEL_ID="${CODEX_READER_TUNNEL_ID:-7b63dd79-b0f5-410c-a5f1-16f3b86e7ca2}"
-TUNNEL_URL="${CODEX_READER_TUNNEL_URL:-https://reader-api.futurecontext.net}"
+TUNNEL_MODE="${CODEX_READER_TUNNEL_MODE:-quick}"
+TUNNEL_ID="${CODEX_READER_TUNNEL_ID:-}"
+TUNNEL_URL="${CODEX_READER_TUNNEL_URL:-}"
 RUNTIME_HOME="${CODEX_READER_HOME:-$HOME/Library/Application Support/CodexReader}"
 LOG_DIR="$RUNTIME_HOME/logs"
 RUN_DIR="$RUNTIME_HOME/run"
 RUNNER_LOG="$LOG_DIR/launcher.log"
 TUNNEL_LOG="$LOG_DIR/tunnel.log"
 STATUS_FILE="$RUN_DIR/tunnel-status.json"
+MAC_RUNNER_PATH="$HOME/.npm-global/bin:$HOME/.local/bin:$HOME/.bun/bin:$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+export PATH="$MAC_RUNNER_PATH:${PATH:-}"
 
 show_message() {
   local title="$1"
@@ -36,17 +39,26 @@ notify() {
 write_status() {
   local ok="$1"
   local pid="${2:-0}"
+  local url="${3:-$TUNNEL_URL}"
   cat > "$STATUS_FILE" <<EOF
-{"ok":${ok},"url":"${TUNNEL_URL}","pid":${pid},"updated_at":"$(date -u '+%Y-%m-%dT%H:%M:%SZ')"}
+{"ok":${ok},"url":"${url}","pid":${pid},"updated_at":"$(date -u '+%Y-%m-%dT%H:%M:%SZ')"}
 EOF
 }
 
 open_pages() {
+  local url="${1:-$TUNNEL_URL}"
+  if [ -z "$url" ]; then
+    return
+  fi
   local encoded
-  encoded="$(node -e 'console.log(encodeURIComponent(process.argv[1]))' "$TUNNEL_URL")"
+  encoded="$(node -e 'console.log(encodeURIComponent(process.argv[1]))' "$url")"
   if command -v open >/dev/null 2>&1; then
     open "${PAGES_URL}/?apiBase=${encoded}" >/dev/null 2>&1 || true
   fi
+}
+
+detect_quick_tunnel_url() {
+  grep -Eo 'https://[-a-zA-Z0-9.]+\.trycloudflare\.com' "$TUNNEL_LOG" 2>/dev/null | tail -n 1 || true
 }
 
 if [ ! -d "$ROOT_DIR/apps/mac-runner" ]; then
@@ -70,6 +82,9 @@ export CODEX_READER_HOME="$RUNTIME_HOME"
 export CODEX_READER_HOST="$HOST"
 export CODEX_READER_PORT="$PORT"
 export CODEX_READER_CODEX_MODE="${CODEX_READER_CODEX_MODE:-auto}"
+if [ -z "${CODEX_READER_CODEX_COMMAND:-}" ] && command -v codex >/dev/null 2>&1; then
+  export CODEX_READER_CODEX_COMMAND="$(command -v codex)"
+fi
 
 cd "$ROOT_DIR"
 
@@ -94,43 +109,64 @@ if ! curl -fsS "$LOCAL_URL/health" >/dev/null 2>&1; then
   exit 1
 fi
 
-if curl -fsS "$TUNNEL_URL/health" >/dev/null 2>&1; then
+if [ -n "$TUNNEL_URL" ] && curl -fsS "$TUNNEL_URL/health" >/dev/null 2>&1; then
   write_status true 1
-  open_pages
+  open_pages "$TUNNEL_URL"
   notify "Codex Reader Tunnel" "Tunnel is already online at $TUNNEL_URL"
   exit 0
 fi
 
+: > "$TUNNEL_LOG"
 {
-  printf '\n[%s] Starting Cloudflare Tunnel %s -> %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$TUNNEL_ID" "$LOCAL_URL"
-  printf '[%s] Public API URL: %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$TUNNEL_URL"
+  printf '\n[%s] Starting Cloudflare Tunnel mode=%s -> %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$TUNNEL_MODE" "$LOCAL_URL"
+  printf '[%s] PATH: %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$PATH"
+  printf '[%s] Codex command: %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "${CODEX_READER_CODEX_COMMAND:-not found in launcher PATH}"
 } >> "$TUNNEL_LOG"
 
-if [ -n "${CODEX_READER_TUNNEL_TOKEN:-}" ]; then
-  nohup npx --yes wrangler@latest tunnel run --token "$CODEX_READER_TUNNEL_TOKEN" --log-level info >> "$TUNNEL_LOG" 2>&1 &
+if [ "$TUNNEL_MODE" = "named" ]; then
+  if [ -z "$TUNNEL_URL" ]; then
+    show_message "Codex Reader Tunnel" "Named Tunnel mode needs CODEX_READER_TUNNEL_URL."
+    exit 1
+  fi
+
+  if [ -n "${CODEX_READER_TUNNEL_TOKEN:-}" ]; then
+    nohup npx --yes wrangler@latest tunnel run --token "$CODEX_READER_TUNNEL_TOKEN" --log-level info >> "$TUNNEL_LOG" 2>&1 &
+  elif [ -n "$TUNNEL_ID" ]; then
+    nohup npx --yes wrangler@latest tunnel run "$TUNNEL_ID" --log-level info >> "$TUNNEL_LOG" 2>&1 &
+  else
+    show_message "Codex Reader Tunnel" "Named Tunnel mode needs CODEX_READER_TUNNEL_ID or CODEX_READER_TUNNEL_TOKEN."
+    exit 1
+  fi
 else
-  nohup npx --yes wrangler@latest tunnel run "$TUNNEL_ID" --log-level info >> "$TUNNEL_LOG" 2>&1 &
+  nohup npx --yes wrangler@latest tunnel quick-start "$LOCAL_URL" --log-level info >> "$TUNNEL_LOG" 2>&1 &
 fi
 
 TUNNEL_PID=$!
-write_status false "$TUNNEL_PID"
+write_status false "$TUNNEL_PID" "$TUNNEL_URL"
 
 for _ in $(seq 1 45); do
   if ! kill -0 "$TUNNEL_PID" >/dev/null 2>&1; then
     write_status false 0
-    show_message "Codex Reader Tunnel" "The Tunnel process stopped. Check $TUNNEL_LOG. If this is the first run on this Mac, run: npx wrangler login"
+    show_message "Codex Reader Tunnel" "The Tunnel process stopped. Check $TUNNEL_LOG."
     exit 1
   fi
 
-  if curl -fsS "$TUNNEL_URL/health" >/dev/null 2>&1; then
-    write_status true "$TUNNEL_PID"
-    open_pages
+  if [ -z "$TUNNEL_URL" ]; then
+    TUNNEL_URL="$(detect_quick_tunnel_url)"
+    if [ -n "$TUNNEL_URL" ]; then
+      write_status false "$TUNNEL_PID" "$TUNNEL_URL"
+    fi
+  fi
+
+  if [ -n "$TUNNEL_URL" ] && curl -fsS "$TUNNEL_URL/health" >/dev/null 2>&1; then
+    write_status true "$TUNNEL_PID" "$TUNNEL_URL"
+    open_pages "$TUNNEL_URL"
     notify "Codex Reader Tunnel" "Tunnel is online at $TUNNEL_URL"
     exit 0
   fi
   sleep 2
 done
 
-write_status false "$TUNNEL_PID"
-show_message "Codex Reader Tunnel" "The Tunnel started but $TUNNEL_URL is not reachable yet. Check DNS and $TUNNEL_LOG."
+write_status false "$TUNNEL_PID" "$TUNNEL_URL"
+show_message "Codex Reader Tunnel" "The Tunnel started but no reachable public URL was confirmed yet. Check $TUNNEL_LOG."
 exit 1

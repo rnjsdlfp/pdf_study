@@ -42,6 +42,7 @@ function createConfig(overrides = {}) {
     allowedOrigins: parseList(overrides.corsOrigins || process.env.CODEX_READER_CORS_ORIGINS),
     apiToken: overrides.apiToken || process.env.CODEX_READER_API_TOKEN || "",
     codexMode: overrides.codexMode || process.env.CODEX_READER_CODEX_MODE || "auto",
+    codexCommand: overrides.codexCommand || process.env.CODEX_READER_CODEX_COMMAND || "",
     codexTimeoutMs: parseNumber(
       overrides.codexTimeoutMs || process.env.CODEX_READER_CODEX_TIMEOUT_MS,
       120000

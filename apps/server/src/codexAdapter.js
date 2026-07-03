@@ -1,4 +1,6 @@
 const { execFile } = require("child_process");
+const os = require("os");
+const path = require("path");
 const { promisify } = require("util");
 const {
   JOB_TYPES,
@@ -14,6 +16,7 @@ class CodexAdapter {
     this.logger = logger;
     this.statusCache = null;
     this.statusCheckedAt = 0;
+    this.codexCommand = "";
   }
 
   async getStatus({ refresh = false } = {}) {
@@ -21,11 +24,13 @@ class CodexAdapter {
       return this.statusCache;
     }
 
-    const cli = await commandOk("codex", ["--version"], 3000);
-    const webSearch = cli.ok ? await commandOk("codex", ["exec", "--help"], 5000) : { ok: false, stdout: "" };
+    const codexCommand = await this.resolveCodexCommand();
+    const cli = codexCommand ? await commandOk(codexCommand, ["--version"], 3000) : { ok: false, stdout: "", stderr: "" };
+    const webSearch = cli.ok ? await commandOk(codexCommand, ["exec", "--help"], 5000) : { ok: false, stdout: "" };
 
     this.statusCache = {
       codex_cli_available: cli.ok,
+      codex_command: cli.ok ? codexCommand : "",
       codex_version: normalizeWhitespace(cli.stdout || cli.stderr || ""),
       codex_login_ok: cli.ok,
       codex_web_search_ok: cli.ok && /--search/.test(webSearch.stdout || ""),
@@ -34,6 +39,20 @@ class CodexAdapter {
     };
     this.statusCheckedAt = Date.now();
     return this.statusCache;
+  }
+
+  async resolveCodexCommand() {
+    if (this.config.codexCommand) {
+      return this.config.codexCommand;
+    }
+    if (this.codexCommand) {
+      return this.codexCommand;
+    }
+    const resolved = await resolveCodexCommand();
+    if (resolved) {
+      this.codexCommand = resolved;
+    }
+    return resolved;
   }
 
   async run(jobType, context) {
@@ -57,9 +76,11 @@ class CodexAdapter {
     args.push(prompt);
 
     try {
-      const { stdout, stderr } = await execFileAsync("codex", args, {
+      const codexCommand = await this.resolveCodexCommand();
+      const { stdout, stderr } = await execFileAsync(codexCommand, args, {
         timeout: this.config.codexTimeoutMs,
-        maxBuffer: 1024 * 1024 * 4
+        maxBuffer: 1024 * 1024 * 4,
+        env: buildCommandEnv()
       });
       const parsed = parseCodexJson(stdout);
       if (!parsed) {
@@ -85,12 +106,101 @@ async function commandOk(command, args, timeout) {
   try {
     const result = await execFileAsync(command, args, {
       timeout,
-      maxBuffer: 1024 * 1024
+      maxBuffer: 1024 * 1024,
+      env: buildCommandEnv()
     });
     return { ok: true, stdout: result.stdout, stderr: result.stderr };
   } catch (error) {
     return { ok: false, stdout: error.stdout || "", stderr: error.stderr || error.message };
   }
+}
+
+async function resolveCodexCommand() {
+  const explicit = process.env.CODEX_READER_CODEX_COMMAND || "";
+  for (const candidate of codexCommandCandidates(explicit)) {
+    const status = await commandOk(candidate, ["--version"], 3000);
+    if (status.ok) {
+      return candidate;
+    }
+  }
+
+  if (process.platform === "darwin") {
+    const shellResolved = await resolveFromLoginShell();
+    if (shellResolved) {
+      return shellResolved;
+    }
+  }
+
+  return "";
+}
+
+function codexCommandCandidates(explicit = "") {
+  const names = process.platform === "win32" ? ["codex.cmd", "codex.exe", "codex"] : ["codex"];
+  const candidates = [
+    explicit,
+    ...names,
+    ...commonBinDirs().flatMap((dir) => names.map((name) => path.join(dir, name)))
+  ];
+  return uniqueList(candidates);
+}
+
+async function resolveFromLoginShell() {
+  for (const shell of ["/bin/zsh", "/bin/bash"]) {
+    try {
+      const result = await execFileAsync(shell, ["-lc", "command -v codex"], {
+        timeout: 3000,
+        maxBuffer: 1024 * 64,
+        env: buildCommandEnv()
+      });
+      const command = String(result.stdout || "").trim().split(/\r?\n/).pop();
+      if (command) {
+        const status = await commandOk(command, ["--version"], 3000);
+        if (status.ok) {
+          return command;
+        }
+      }
+    } catch {
+      // Keep trying other shells and paths.
+    }
+  }
+  return "";
+}
+
+function buildCommandEnv() {
+  return {
+    ...process.env,
+    PATH: uniqueList([...commonBinDirs(), process.env.PATH || ""]).join(path.delimiter)
+  };
+}
+
+function commonBinDirs() {
+  const home = os.homedir();
+  return uniqueList([
+    process.env.CODEX_READER_BIN_DIR || "",
+    path.join(home, ".npm-global", "bin"),
+    path.join(home, ".local", "bin"),
+    path.join(home, ".bun", "bin"),
+    path.join(home, ".cargo", "bin"),
+    "/opt/homebrew/bin",
+    "/usr/local/bin",
+    "/usr/bin",
+    "/bin",
+    "/usr/sbin",
+    "/sbin"
+  ]);
+}
+
+function uniqueList(values) {
+  const seen = new Set();
+  const result = [];
+  for (const value of values) {
+    const normalized = String(value || "").trim();
+    if (normalized && !seen.has(normalized)) {
+      seen.add(normalized);
+      result.push(normalized);
+    }
+  }
+  return result;
 }
 
 function buildPrompt(jobType, context) {
@@ -319,5 +429,6 @@ module.exports = {
   CodexAdapter,
   buildPrompt,
   parseCodexJson,
+  codexCommandCandidates,
   fallbackResult
 };

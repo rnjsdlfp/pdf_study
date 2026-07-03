@@ -36,7 +36,7 @@ bash ./fix-mac-permissions.sh
 
 If macOS blocks the first launch for security reasons, right-click the file and choose `Open`.
 
-When you open `https://pdf-study.pages.dev/`, the web UI connects to the Cloudflare Tunnel API at `https://reader-api.futurecontext.net`.
+When you open `https://pdf-study.pages.dev/` on the same MacBook, the web UI connects to `http://127.0.0.1:3001`.
 
 To force same-Mac local mode:
 
@@ -44,18 +44,17 @@ To force same-Mac local mode:
 https://pdf-study.pages.dev/?apiBase=http://127.0.0.1:3001
 ```
 
-For another device, such as an iPad or a different laptop, use a Cloudflare Tunnel API hostname and open Pages once with:
-
-```text
-https://pdf-study.pages.dev/?apiBase=https://reader-api.futurecontext.net
-```
+For another device, such as an iPad or a different laptop, double-click `★CodexReader Tunnel.command`. It opens Pages with a temporary Cloudflare Quick Tunnel API URL.
 
 4. Confirm Codex CLI:
 
 ```bash
 codex --version
 codex exec --help
+command -v codex
 ```
+
+If Terminal can find Codex but the web app still says `Codex CLI not found`, restart with the latest launcher or set `CODEX_READER_CODEX_COMMAND` to the absolute path printed by `command -v codex`.
 
 5. Optional: install launchd for login-time auto-start:
 
