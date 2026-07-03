@@ -363,6 +363,9 @@ function applyCors(request, response, config) {
     response.setHeader("Vary", "Origin");
     response.setHeader("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS");
     response.setHeader("Access-Control-Allow-Headers", "Content-Type,X-Codex-Reader-Token,CF-Access-Jwt-Assertion");
+    if (request.headers["access-control-request-private-network"] === "true") {
+      response.setHeader("Access-Control-Allow-Private-Network", "true");
+    }
   }
 }
 
