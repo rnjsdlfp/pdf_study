@@ -18,7 +18,7 @@ const API_BASE_CANDIDATES = uniqueApiBases([
   ...(window.CODEX_READER_CONFIG?.apiBaseCandidates || [])
 ]);
 const API_DISCOVERY_URL = normalizeApiBase(window.CODEX_READER_CONFIG?.discoveryUrl || "");
-const API_BASE_STORAGE_KEY = window.CODEX_READER_CONFIG?.apiBaseStorageKey || "codexReaderApiBaseV2";
+const APP_API_BASE_STORAGE_KEY = window.CODEX_READER_CONFIG?.apiBaseStorageKey || "codexReaderApiBaseV2";
 const FORCE_API_DISCOVERY = Boolean(window.CODEX_READER_CONFIG?.forceDiscovery);
 const PREFER_SAME_ORIGIN_API = Boolean(window.CODEX_READER_CONFIG?.preferSameOriginApi);
 const APP_BUILD_VERSION = "20260703-upload-fallback";
@@ -248,7 +248,7 @@ function apiUrl(path, base = activeApiBase) {
 function rememberApiBase(candidate) {
   activeApiBase = candidate;
   if (candidate && window.location.hostname.endsWith(".pages.dev")) {
-    localStorage.setItem(API_BASE_STORAGE_KEY, candidate);
+    localStorage.setItem(APP_API_BASE_STORAGE_KEY, candidate);
   }
 }
 
@@ -259,8 +259,8 @@ function forgetApiBase(candidate) {
   if (activeApiBase === candidate) {
     activeApiBase = "";
   }
-  if (normalizeApiBase(localStorage.getItem(API_BASE_STORAGE_KEY)) === candidate) {
-    localStorage.removeItem(API_BASE_STORAGE_KEY);
+  if (normalizeApiBase(localStorage.getItem(APP_API_BASE_STORAGE_KEY)) === candidate) {
+    localStorage.removeItem(APP_API_BASE_STORAGE_KEY);
   }
 }
 
@@ -316,7 +316,7 @@ async function discoverApiBase(options = {}) {
       const apiBase = normalizeApiBase(payload?.ok ? payload.proxyBase || payload.apiBase : "");
       discoveredDirectApiBase = directApiBase && directApiBase !== apiBase ? directApiBase : "";
       if (apiBase) {
-        localStorage.setItem(API_BASE_STORAGE_KEY, apiBase);
+        localStorage.setItem(APP_API_BASE_STORAGE_KEY, apiBase);
       }
       return apiBase;
     })
