@@ -5,6 +5,7 @@ const state = {
   currentPage: 1,
   selectedText: "",
   selectedRange: null,
+  dragSelectionStart: null,
   zoom: 1,
   showKoreanSidebar: false,
   analysisTab: "analysis",
@@ -140,8 +141,10 @@ function bindEvents() {
   els.zoomOutButton.addEventListener("click", () => setZoom(state.zoom - 0.08));
   els.zoomInButton.addEventListener("click", () => setZoom(state.zoom + 0.08));
 
-  els.readerSurface.addEventListener("mouseup", scheduleSelectionPopup);
-  els.readerSurface.addEventListener("pointerup", scheduleSelectionPopup);
+  els.readerSurface.addEventListener("mousedown", rememberSelectionStart);
+  els.readerSurface.addEventListener("pointerdown", rememberSelectionStart);
+  els.readerSurface.addEventListener("mouseup", completePointerSelection);
+  els.readerSurface.addEventListener("pointerup", completePointerSelection);
   els.readerSurface.addEventListener("keyup", scheduleSelectionPopup);
   document.addEventListener("selectionchange", scheduleSelectionPopup);
   document.addEventListener("mousedown", (event) => {
@@ -589,6 +592,75 @@ async function createAnalysisJob(scope) {
 function scheduleSelectionPopup() {
   window.clearTimeout(selectionTimer);
   selectionTimer = window.setTimeout(handleSelection, 80);
+}
+
+function rememberSelectionStart(event) {
+  if (!eventPageText(event)) {
+    state.dragSelectionStart = null;
+    return;
+  }
+  state.dragSelectionStart = selectionPointFromEvent(event);
+}
+
+function completePointerSelection(event) {
+  restorePointerSelection(event);
+  scheduleSelectionPopup();
+}
+
+function restorePointerSelection(event) {
+  const currentText = window.getSelection()?.toString()?.replace(/\s+/g, " ").trim() || "";
+  if (currentText.length >= 8 || !state.dragSelectionStart || !eventPageText(event)) {
+    state.dragSelectionStart = null;
+    return;
+  }
+  const end = selectionPointFromEvent(event);
+  const start = state.dragSelectionStart;
+  state.dragSelectionStart = null;
+  if (!start || !end || (start.node === end.node && start.offset === end.offset)) {
+    return;
+  }
+
+  const first = isSelectionPointBefore(start, end) ? start : end;
+  const second = first === start ? end : start;
+  const range = document.createRange();
+  range.setStart(first.node, first.offset);
+  range.setEnd(second.node, second.offset);
+  if (range.toString().replace(/\s+/g, " ").trim().length < 8) {
+    return;
+  }
+  const selection = window.getSelection();
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
+function selectionPointFromEvent(event) {
+  if (document.caretRangeFromPoint) {
+    const range = document.caretRangeFromPoint(event.clientX, event.clientY);
+    if (range && els.readerSurface.contains(range.startContainer)) {
+      return { node: range.startContainer, offset: range.startOffset };
+    }
+  }
+  if (document.caretPositionFromPoint) {
+    const position = document.caretPositionFromPoint(event.clientX, event.clientY);
+    if (position && els.readerSurface.contains(position.offsetNode)) {
+      return { node: position.offsetNode, offset: position.offset };
+    }
+  }
+  return null;
+}
+
+function eventPageText(event) {
+  if (event.target instanceof Element) {
+    return event.target.closest(".page-text");
+  }
+  return event.target?.parentElement?.closest(".page-text") || null;
+}
+
+function isSelectionPointBefore(a, b) {
+  if (a.node === b.node) {
+    return a.offset <= b.offset;
+  }
+  return Boolean(a.node.compareDocumentPosition(b.node) & Node.DOCUMENT_POSITION_FOLLOWING);
 }
 
 function handleSelection() {
