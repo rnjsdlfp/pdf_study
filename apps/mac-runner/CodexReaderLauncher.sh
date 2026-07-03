@@ -6,8 +6,13 @@ PORT="${CODEX_READER_PORT:-3001}"
 HOST="${CODEX_READER_HOST:-127.0.0.1}"
 URL="http://${HOST}:${PORT}"
 RUNTIME_HOME="${CODEX_READER_HOME:-$HOME/Library/Application Support/CodexReader}"
-CODEX_AUTH_HOME="${CODEX_HOME:-$HOME/.codex}"
+DEFAULT_CODEX_HOME="$HOME/.codex"
+CODEX_AUTH_HOME="${CODEX_HOME:-$DEFAULT_CODEX_HOME}"
+if [ ! -f "$CODEX_AUTH_HOME/auth.json" ] && [ -f "$DEFAULT_CODEX_HOME/auth.json" ]; then
+  CODEX_AUTH_HOME="$DEFAULT_CODEX_HOME"
+fi
 LOG_DIR="$RUNTIME_HOME/logs"
+RUN_DIR="$RUNTIME_HOME/run"
 LAUNCH_LOG="$LOG_DIR/launcher.log"
 MAC_RUNNER_PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$HOME/.npm-global/bin:$HOME/.local/bin:$HOME/.codex/bin:$HOME/.bun/bin:$HOME/.cargo/bin"
 export PATH="$MAC_RUNNER_PATH:${PATH:-}"
@@ -36,6 +41,38 @@ notify() {
   fi
 }
 
+http_ok() {
+  curl -fsS --connect-timeout 3 --max-time 3 "$URL/health" >/dev/null 2>&1
+}
+
+restart_existing_runner() {
+  local pid_file="$RUN_DIR/runner.pid"
+  local pid=""
+
+  if [ -f "$pid_file" ]; then
+    pid="$(cat "$pid_file" 2>/dev/null || true)"
+    case "$pid" in
+      ''|*[!0-9]*)
+        pid=""
+        ;;
+    esac
+  fi
+
+  if [ -n "$pid" ] && kill -0 "$pid" >/dev/null 2>&1; then
+    printf '[%s] Stopping existing Codex Reader server pid=%s for fresh launcher environment\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$pid" >> "$LAUNCH_LOG"
+    kill "$pid" >/dev/null 2>&1 || true
+    sleep 1
+  fi
+
+  if http_ok; then
+    printf '[%s] Stopping existing Codex Reader server by process match for fresh launcher environment\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$LAUNCH_LOG"
+    pkill -f "$ROOT_DIR/apps/mac-runner/CodexReaderRunner.js" >/dev/null 2>&1 || true
+    sleep 1
+  fi
+
+  rm -f "$RUN_DIR/runner.lock" "$RUN_DIR/runner.pid"
+}
+
 if [ ! -d "$ROOT_DIR/apps/mac-runner" ]; then
   show_message "Codex Reader" "Could not find the Codex Reader source folder. Keep this launcher inside the repository folder."
   exit 1
@@ -46,7 +83,7 @@ if ! command -v node >/dev/null 2>&1; then
   exit 1
 fi
 
-mkdir -p "$LOG_DIR"
+mkdir -p "$LOG_DIR" "$RUN_DIR"
 
 export CODEX_READER_HOME="$RUNTIME_HOME"
 export CODEX_READER_HOST="$HOST"
@@ -85,11 +122,13 @@ cd "$ROOT_DIR"
   printf '[%s] Codex command: %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "${CODEX_READER_CODEX_COMMAND:-not found in launcher PATH}"
 } >> "$LAUNCH_LOG"
 
+restart_existing_runner
+
 nohup node "$ROOT_DIR/apps/mac-runner/CodexReaderRunner.js" >> "$LAUNCH_LOG" 2>&1 &
 RUNNER_PID=$!
 
 for _ in $(seq 1 30); do
-  if curl -fsS "$URL/health" >/dev/null 2>&1; then
+  if http_ok; then
     if command -v open >/dev/null 2>&1; then
       open "$URL" >/dev/null 2>&1 || true
     fi

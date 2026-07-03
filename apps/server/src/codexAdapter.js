@@ -29,14 +29,17 @@ class CodexAdapter {
     const cli = codexCommand ? await commandOk(codexCommand, ["--version"], 3000) : { ok: false, stdout: "", stderr: "" };
     const rootHelp = cli.ok ? await commandOk(codexCommand, ["--help"], 5000) : { ok: false, stdout: "", stderr: "" };
     const execHelp = cli.ok ? await commandOk(codexCommand, ["exec", "--help"], 5000) : { ok: false, stdout: "", stderr: "" };
+    const login = cli.ok ? await commandOk(codexCommand, ["login", "status"], 5000) : { ok: false, stdout: "", stderr: "" };
     const searchMode = detectCodexSearchMode(rootHelp, execHelp);
     const auth = inspectCodexAuthEnv();
+    const loginText = normalizeWhitespace(login.stdout || login.stderr || "");
 
     this.statusCache = {
       codex_cli_available: cli.ok,
       codex_command: cli.ok ? codexCommand : "",
       codex_version: normalizeWhitespace(cli.stdout || cli.stderr || ""),
-      codex_login_ok: cli.ok && (auth.auth_file_ok || auth.auth_env_ok),
+      codex_login_ok: cli.ok && (login.ok || auth.auth_env_ok),
+      codex_login_status: login.ok ? loginText : loginText || "Not logged in",
       codex_auth_home: auth.home,
       codex_auth_file_ok: auth.auth_file_ok,
       codex_auth_env_ok: auth.auth_env_ok,
@@ -74,6 +77,12 @@ class CodexAdapter {
         throw new Error("Codex CLI not found.");
       }
       return fallbackResult(jobType, context, "Codex CLI was not found; local fallback was used.");
+    }
+
+    if (!status.codex_login_ok && requiresCodexCli(jobType)) {
+      throw new Error(
+        `Codex CLI is not logged in for CODEX_HOME=${status.codex_auth_home || "(unknown)"}. Run codex login on this Mac or provide OPENAI_API_KEY, then restart ★CodexReader Tunnel.command.`
+      );
     }
 
     const prompt = buildPrompt(jobType, {

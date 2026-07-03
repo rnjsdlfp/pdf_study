@@ -11,7 +11,11 @@ TUNNEL_MODE="${CODEX_READER_TUNNEL_MODE:-quick}"
 TUNNEL_ID="${CODEX_READER_TUNNEL_ID:-}"
 TUNNEL_URL="${CODEX_READER_TUNNEL_URL:-}"
 RUNTIME_HOME="${CODEX_READER_HOME:-$HOME/Library/Application Support/CodexReader}"
-CODEX_AUTH_HOME="${CODEX_HOME:-$HOME/.codex}"
+DEFAULT_CODEX_HOME="$HOME/.codex"
+CODEX_AUTH_HOME="${CODEX_HOME:-$DEFAULT_CODEX_HOME}"
+if [ ! -f "$CODEX_AUTH_HOME/auth.json" ] && [ -f "$DEFAULT_CODEX_HOME/auth.json" ]; then
+  CODEX_AUTH_HOME="$DEFAULT_CODEX_HOME"
+fi
 LOG_DIR="$RUNTIME_HOME/logs"
 RUN_DIR="$RUNTIME_HOME/run"
 RUNNER_LOG="$LOG_DIR/launcher.log"
@@ -81,6 +85,34 @@ notify() {
   if command -v osascript >/dev/null 2>&1; then
     osascript -e "display notification \"$message\" with title \"$title\"" >/dev/null 2>&1 || true
   fi
+}
+
+restart_existing_runner() {
+  local pid_file="$RUN_DIR/runner.pid"
+  local pid=""
+
+  if [ -f "$pid_file" ]; then
+    pid="$(cat "$pid_file" 2>/dev/null || true)"
+    case "$pid" in
+      ''|*[!0-9]*)
+        pid=""
+        ;;
+    esac
+  fi
+
+  if [ -n "$pid" ] && kill -0 "$pid" >/dev/null 2>&1; then
+    log_runner "Stopping existing Codex Reader server pid=$pid for fresh launcher environment"
+    kill "$pid" >/dev/null 2>&1 || true
+    sleep 1
+  fi
+
+  if http_ok "$LOCAL_URL/health" "$LOCAL_CURL_MAX_TIME"; then
+    log_runner "Stopping existing Codex Reader server by process match for fresh launcher environment"
+    pkill -f "$ROOT_DIR/apps/mac-runner/CodexReaderRunner.js" >/dev/null 2>&1 || true
+    sleep 1
+  fi
+
+  rm -f "$RUN_DIR/runner.lock" "$RUN_DIR/runner.pid"
 }
 
 mark_tunnel_stopped() {
@@ -247,6 +279,7 @@ fi
 cd "$ROOT_DIR"
 
 write_status false 0 ""
+restart_existing_runner
 
 if ! http_ok "$LOCAL_URL/health" "$LOCAL_CURL_MAX_TIME"; then
   log_runner "Starting Codex Reader server for Tunnel"

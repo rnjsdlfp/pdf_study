@@ -329,6 +329,7 @@ function createApp({ config, paths, store, eventHub, codexAdapter, worker, logge
       codex_cli_available: codex.codex_cli_available,
       codex_command: codex.codex_command,
       codex_login_ok: codex.codex_login_ok,
+      codex_login_status: codex.codex_login_status,
       codex_auth_home: codex.codex_auth_home,
       codex_auth_file_ok: codex.codex_auth_file_ok,
       codex_auth_env_ok: codex.codex_auth_env_ok,

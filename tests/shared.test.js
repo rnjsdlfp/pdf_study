@@ -164,9 +164,11 @@ test("Codex auth environment exposes auth home to child processes", () => {
   try {
     const codexHome = path.join(tmp, "custom-codex-home");
     const home = path.join(tmp, "home");
+    const homeCodex = path.join(home, ".codex");
     fs.mkdirSync(codexHome, { recursive: true });
-    fs.mkdirSync(home, { recursive: true });
+    fs.mkdirSync(homeCodex, { recursive: true });
     fs.writeFileSync(path.join(codexHome, "auth.json"), "{}");
+    fs.writeFileSync(path.join(homeCodex, "auth.json"), "{}");
 
     const env = {
       CODEX_HOME: codexHome,
@@ -181,6 +183,14 @@ test("Codex auth environment exposes auth home to child processes", () => {
     assert.equal(auth.auth_env_ok, false);
     assert.equal(commandEnv.CODEX_HOME, codexHome);
     assert.equal(commandEnv.HOME, home);
+
+    fs.rmSync(path.join(codexHome, "auth.json"));
+    const fallbackAuth = inspectCodexAuthEnv(env);
+    const fallbackCommandEnv = buildCommandEnv(env);
+
+    assert.equal(fallbackAuth.home, homeCodex);
+    assert.equal(fallbackAuth.auth_file_ok, true);
+    assert.equal(fallbackCommandEnv.CODEX_HOME, homeCodex);
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

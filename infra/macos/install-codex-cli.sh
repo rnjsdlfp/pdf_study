@@ -3,7 +3,11 @@ set -euo pipefail
 
 ROOT_DIR="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 RUNTIME_HOME="${CODEX_READER_HOME:-$HOME/Library/Application Support/CodexReader}"
-CODEX_AUTH_HOME="${CODEX_HOME:-$HOME/.codex}"
+DEFAULT_CODEX_HOME="$HOME/.codex"
+CODEX_AUTH_HOME="${CODEX_HOME:-$DEFAULT_CODEX_HOME}"
+if [ ! -f "$CODEX_AUTH_HOME/auth.json" ] && [ -f "$DEFAULT_CODEX_HOME/auth.json" ]; then
+  CODEX_AUTH_HOME="$DEFAULT_CODEX_HOME"
+fi
 LOG_DIR="$RUNTIME_HOME/logs"
 LOG_FILE="$LOG_DIR/codex-cli-install.log"
 NPM_PREFIX="${CODEX_READER_NPM_PREFIX:-$HOME/.npm-global}"
