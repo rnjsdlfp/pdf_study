@@ -34,7 +34,7 @@ function readApiBaseOverride() {
 
 function defaultApiBase() {
   if (window.location.hostname.endsWith(".pages.dev")) {
-    return LOCAL_MACBOOK_API_BASE;
+    return "";
   }
   return "";
 }
@@ -42,7 +42,7 @@ function defaultApiBase() {
 function defaultApiBaseCandidates() {
   const configuredTunnel = normalizeApiBase(window.CODEX_READER_TUNNEL_API_BASE || "");
   if (window.location.hostname.endsWith(".pages.dev")) {
-    return [configuredTunnel, LOCAL_MACBOOK_API_BASE].filter(Boolean);
+    return [normalizeApiBase(`${DISCOVERY_URL}/proxy`), configuredTunnel, LOCAL_MACBOOK_API_BASE].filter(Boolean);
   }
   return [""];
 }
@@ -52,5 +52,6 @@ window.CODEX_READER_CONFIG = {
   apiBaseCandidates: defaultApiBaseCandidates(),
   apiBaseStorageKey: API_BASE_STORAGE_KEY,
   forceDiscovery: queryFlag("refreshDiscovery") || queryFlag("resetApiBase"),
+  preferSameOriginApi: window.location.hostname.endsWith(".pages.dev"),
   discoveryUrl: window.CODEX_READER_DISCOVERY_URL || DISCOVERY_URL
 };

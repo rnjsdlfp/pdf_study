@@ -1,6 +1,9 @@
 /config.js
   Cache-Control: no-store
 
+/app.js
+  Cache-Control: no-store
+
 /index.html
   Cache-Control: no-store
 

@@ -20,6 +20,7 @@ const API_BASE_CANDIDATES = uniqueApiBases([
 const API_DISCOVERY_URL = normalizeApiBase(window.CODEX_READER_CONFIG?.discoveryUrl || "");
 const API_BASE_STORAGE_KEY = window.CODEX_READER_CONFIG?.apiBaseStorageKey || "codexReaderApiBaseV2";
 const FORCE_API_DISCOVERY = Boolean(window.CODEX_READER_CONFIG?.forceDiscovery);
+const PREFER_SAME_ORIGIN_API = Boolean(window.CODEX_READER_CONFIG?.preferSameOriginApi);
 let discoveryCheckedAt = 0;
 let discoveryPromise = null;
 let discoveryForcedOnce = false;
@@ -256,7 +257,13 @@ async function apiBaseCandidates() {
   discoveryForcedOnce = discoveryForcedOnce || force;
   const discovered = await discoverApiBase({ force });
   if (discovered) {
+    if (PREFER_SAME_ORIGIN_API) {
+      return uniqueApiBases(["", activeApiBase, discovered, discoveredDirectApiBase, ...API_BASE_CANDIDATES]);
+    }
     return uniqueApiBases([discovered, activeApiBase, discoveredDirectApiBase, ...API_BASE_CANDIDATES]);
+  }
+  if (PREFER_SAME_ORIGIN_API) {
+    return uniqueApiBases(["", activeApiBase, ...API_BASE_CANDIDATES]);
   }
   return uniqueApiBases([activeApiBase, ...API_BASE_CANDIDATES]);
 }
