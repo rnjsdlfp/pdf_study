@@ -247,6 +247,9 @@ async function pollStatus() {
     if (status.codex_mode === "mock") {
       setStatus(els.codexStatus, false, "Codex mock mode", true);
     } else {
+      els.codexStatus.title = status.codex_command
+        ? `Codex CLI: ${status.codex_command}`
+        : "Run ★Install Codex CLI.command on the MacBook.";
       setStatus(
         els.codexStatus,
         status.codex_cli_available,

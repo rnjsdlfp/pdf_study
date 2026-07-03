@@ -191,6 +191,7 @@ function commonBinDirs() {
     process.env.CODEX_READER_BIN_DIR || "",
     path.join(home, ".npm-global", "bin"),
     path.join(home, ".local", "bin"),
+    path.join(home, ".codex", "bin"),
     path.join(home, ".bun", "bin"),
     path.join(home, ".cargo", "bin"),
     "/opt/homebrew/bin",

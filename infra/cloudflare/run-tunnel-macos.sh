@@ -22,10 +22,15 @@ NPM_CACHE_DIR="$RUNTIME_HOME/npm-cache"
 LOCAL_CURL_MAX_TIME="${CODEX_READER_LOCAL_CURL_MAX_TIME:-3}"
 PUBLIC_CURL_MAX_TIME="${CODEX_READER_PUBLIC_CURL_MAX_TIME:-8}"
 REGISTER_CURL_MAX_TIME="${CODEX_READER_REGISTER_CURL_MAX_TIME:-20}"
+CODEX_CLI_HELPER="$ROOT_DIR/infra/macos/codex-cli.sh"
 export npm_config_cache="$NPM_CACHE_DIR"
 export NPM_CONFIG_CACHE="$NPM_CACHE_DIR"
 export npm_config_update_notifier=false
 export NPM_CONFIG_UPDATE_NOTIFIER=false
+if [ -r "$CODEX_CLI_HELPER" ]; then
+  # shellcheck source=/dev/null
+  . "$CODEX_CLI_HELPER"
+fi
 
 print_line() {
   printf '%s\n' "$*"
@@ -173,7 +178,12 @@ export CODEX_READER_HOME="$RUNTIME_HOME"
 export CODEX_READER_HOST="$HOST"
 export CODEX_READER_PORT="$PORT"
 export CODEX_READER_CODEX_MODE="${CODEX_READER_CODEX_MODE:-auto}"
-if [ -z "${CODEX_READER_CODEX_COMMAND:-}" ] && command -v codex >/dev/null 2>&1; then
+if [ -z "${CODEX_READER_CODEX_COMMAND:-}" ] && command -v codex_reader_resolve_codex >/dev/null 2>&1; then
+  CODEX_READER_CODEX_COMMAND="$(codex_reader_resolve_codex || true)"
+  if [ -n "$CODEX_READER_CODEX_COMMAND" ]; then
+    export CODEX_READER_CODEX_COMMAND
+  fi
+elif [ -z "${CODEX_READER_CODEX_COMMAND:-}" ] && command -v codex >/dev/null 2>&1; then
   export CODEX_READER_CODEX_COMMAND="$(command -v codex)"
 fi
 

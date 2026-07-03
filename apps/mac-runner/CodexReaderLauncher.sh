@@ -10,6 +10,11 @@ LOG_DIR="$RUNTIME_HOME/logs"
 LAUNCH_LOG="$LOG_DIR/launcher.log"
 MAC_RUNNER_PATH="$HOME/.npm-global/bin:$HOME/.local/bin:$HOME/.bun/bin:$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 export PATH="$MAC_RUNNER_PATH:${PATH:-}"
+CODEX_CLI_HELPER="$ROOT_DIR/infra/macos/codex-cli.sh"
+if [ -r "$CODEX_CLI_HELPER" ]; then
+  # shellcheck source=/dev/null
+  . "$CODEX_CLI_HELPER"
+fi
 
 show_message() {
   local title="$1"
@@ -45,7 +50,12 @@ export CODEX_READER_HOME="$RUNTIME_HOME"
 export CODEX_READER_HOST="$HOST"
 export CODEX_READER_PORT="$PORT"
 export CODEX_READER_CODEX_MODE="${CODEX_READER_CODEX_MODE:-auto}"
-if [ -z "${CODEX_READER_CODEX_COMMAND:-}" ] && command -v codex >/dev/null 2>&1; then
+if [ -z "${CODEX_READER_CODEX_COMMAND:-}" ] && command -v codex_reader_resolve_codex >/dev/null 2>&1; then
+  CODEX_READER_CODEX_COMMAND="$(codex_reader_resolve_codex || true)"
+  if [ -n "$CODEX_READER_CODEX_COMMAND" ]; then
+    export CODEX_READER_CODEX_COMMAND
+  fi
+elif [ -z "${CODEX_READER_CODEX_COMMAND:-}" ] && command -v codex >/dev/null 2>&1; then
   export CODEX_READER_CODEX_COMMAND="$(command -v codex)"
 fi
 

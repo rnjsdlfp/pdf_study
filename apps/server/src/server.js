@@ -317,6 +317,7 @@ function createApp({ config, paths, store, eventHub, codexAdapter, worker, logge
     const tunnel = readTunnelStatus(paths);
     return {
       codex_cli_available: codex.codex_cli_available,
+      codex_command: codex.codex_command,
       codex_login_ok: codex.codex_login_ok,
       codex_web_search_ok: codex.codex_web_search_ok,
       codex_mode: codex.codex_mode,

@@ -43,6 +43,14 @@ After the MacBook Tunnel launcher is running, other computers can open `https://
 
 The launcher uses app-local caches under `~/Library/Application Support/CodexReader`, so `npx wrangler login` is not required for the default Quick Tunnel flow.
 
+If the status bar says `Codex CLI not found`, run this from Finder:
+
+```text
+★Install Codex CLI.command
+```
+
+It installs the official `@openai/codex` CLI into `~/.npm-global`, then offers to run `codex login`. The reader launchers already include `~/.npm-global/bin`, `~/.local/bin`, and `~/.codex/bin` in their search path.
+
 For development inside this repository, set `CODEX_READER_HOME=./.runtime` so runtime data stays inside the ignored workspace folder.
 
 ## What Is Implemented

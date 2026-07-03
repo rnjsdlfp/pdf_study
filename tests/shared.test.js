@@ -93,6 +93,7 @@ test("Codex command lookup includes explicit and common paths", () => {
   assert.equal(candidates[0], "/custom/bin/codex");
   assert.equal(candidates.includes("codex") || candidates.includes("codex.cmd"), true);
   assert.equal(candidates.some((candidate) => /[\\/]opt[\\/]homebrew[\\/]bin[\\/]codex/.test(candidate)), true);
+  assert.equal(candidates.some((candidate) => /[\\/]\.codex[\\/]bin[\\/]codex/.test(candidate)), true);
   if (process.platform === "darwin") {
     assert.equal(candidates.includes("/Applications/Codex.app/Contents/Resources/codex"), true);
   }
