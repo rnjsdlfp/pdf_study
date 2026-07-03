@@ -21,10 +21,12 @@ const API_DISCOVERY_URL = normalizeApiBase(window.CODEX_READER_CONFIG?.discovery
 const API_BASE_STORAGE_KEY = window.CODEX_READER_CONFIG?.apiBaseStorageKey || "codexReaderApiBaseV2";
 const FORCE_API_DISCOVERY = Boolean(window.CODEX_READER_CONFIG?.forceDiscovery);
 const PREFER_SAME_ORIGIN_API = Boolean(window.CODEX_READER_CONFIG?.preferSameOriginApi);
+const APP_BUILD_VERSION = "20260703-direct-status";
 let discoveryCheckedAt = 0;
 let discoveryPromise = null;
 let discoveryForcedOnce = false;
 let discoveredDirectApiBase = "";
+let statusErrorShown = false;
 
 const els = {
   documentTitle: document.getElementById("documentTitle"),
@@ -64,6 +66,8 @@ const els = {
 init();
 
 function init() {
+  setStatus(els.serverStatus, false, "Connecting", true);
+  els.serverStatus.title = `Build: ${APP_BUILD_VERSION}\nStatus API: /api/system/status`;
   bindEvents();
   pollStatus();
   loadDocuments({ silentNetworkError: true });
@@ -187,6 +191,18 @@ async function parseApiResponse(response) {
   return payload;
 }
 
+async function fetchJson(url, options = {}) {
+  const response = await fetch(url, {
+    cache: "no-store",
+    headers: {
+      ...(options.body && !(options.body instanceof FormData) ? { "Content-Type": "application/json" } : {}),
+      ...(options.headers || {})
+    },
+    ...options
+  });
+  return parseApiResponse(response);
+}
+
 function networkFailureError(error, context = {}) {
   const next = new Error(networkFailureMessage(error, context));
   next.isNetworkError = true;
@@ -297,8 +313,10 @@ async function discoverApiBase(options = {}) {
 
 async function pollStatus() {
   try {
-    const status = await api("/api/system/status");
+    const status = PREFER_SAME_ORIGIN_API ? await fetchJson("/api/system/status") : await api("/api/system/status");
     setStatus(els.serverStatus, true, "MacBook active");
+    els.serverStatus.title = `Connected through /api/system/status\nBuild: ${APP_BUILD_VERSION}`;
+    statusErrorShown = false;
     if (status.codex_mode === "mock") {
       setStatus(els.codexStatus, false, "Codex mock mode", true);
     } else {
@@ -316,8 +334,14 @@ async function pollStatus() {
     const queued = status.queue.queued || 0;
     const queueText = running || queued ? `Queue ${running} running / ${queued} queued` : "Queue idle";
     setStatus(els.queueStatus, running || queued, queueText, true);
-  } catch {
+  } catch (error) {
     setStatus(els.serverStatus, false, "MacBook offline");
+    els.serverStatus.title = `Status check failed: ${error.message || error}\nAPI: /api/system/status\nBuild: ${APP_BUILD_VERSION}`;
+    console.error("Codex Reader status check failed", error);
+    if (!statusErrorShown) {
+      statusErrorShown = true;
+      toast(`Status check failed: ${error.message || error}`);
+    }
   }
 }
 
