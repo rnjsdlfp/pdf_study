@@ -24,9 +24,32 @@ export NPM_CONFIG_CACHE="$NPM_CACHE_DIR"
 export npm_config_update_notifier=false
 export NPM_CONFIG_UPDATE_NOTIFIER=false
 
+print_line() {
+  printf '%s\n' "$*"
+}
+
+log_tunnel() {
+  local message="$1"
+  local line
+  line="[$(date -u '+%Y-%m-%dT%H:%M:%SZ')] $message"
+  print_line "$line"
+  printf '%s\n' "$line" >> "$TUNNEL_LOG"
+}
+
+log_runner() {
+  local message="$1"
+  local line
+  line="[$(date -u '+%Y-%m-%dT%H:%M:%SZ')] $message"
+  print_line "$line"
+  printf '%s\n' "$line" >> "$RUNNER_LOG"
+}
+
 show_message() {
   local title="$1"
   local message="$2"
+  print_line ""
+  print_line "$title: $message"
+  print_line ""
   if command -v osascript >/dev/null 2>&1; then
     osascript -e "display dialog \"$message\" with title \"$title\" buttons {\"OK\"} default button \"OK\"" >/dev/null 2>&1 || true
   else
@@ -51,15 +74,40 @@ write_status() {
 EOF
 }
 
+show_recent_logs() {
+  print_line ""
+  print_line "Recent launcher log: $RUNNER_LOG"
+  tail -n 40 "$RUNNER_LOG" 2>/dev/null || true
+  print_line ""
+  print_line "Recent tunnel log: $TUNNEL_LOG"
+  tail -n 80 "$TUNNEL_LOG" 2>/dev/null || true
+  print_line ""
+}
+
+fail_with_logs() {
+  local message="$1"
+  show_recent_logs
+  show_message "Codex Reader Tunnel" "$message Logs are at $TUNNEL_LOG and $RUNNER_LOG."
+  exit 1
+}
+
 open_pages() {
   local url="${1:-$TUNNEL_URL}"
   if [ -z "$url" ]; then
     return
   fi
   local encoded
+  local target
   encoded="$(node -e 'console.log(encodeURIComponent(process.argv[1]))' "$url")"
+  target="${PAGES_URL}/?apiBase=${encoded}"
+  log_tunnel "Opening browser: $target"
   if command -v open >/dev/null 2>&1; then
-    open "${PAGES_URL}/?apiBase=${encoded}" >/dev/null 2>&1 || true
+    if open "$target" >/dev/null 2>&1; then
+      return
+    fi
+  fi
+  if command -v osascript >/dev/null 2>&1; then
+    osascript -e "open location \"$target\"" >/dev/null 2>&1 || true
   fi
 }
 
@@ -98,6 +146,13 @@ if ! command -v npx >/dev/null 2>&1; then
 fi
 
 mkdir -p "$LOG_DIR" "$RUN_DIR" "$NPM_CACHE_DIR"
+touch "$RUNNER_LOG" "$TUNNEL_LOG"
+
+print_line "Codex Reader Tunnel launcher"
+print_line "Repository: $ROOT_DIR"
+print_line "Local API: $LOCAL_URL"
+print_line "Logs: $TUNNEL_LOG"
+print_line ""
 
 export CODEX_READER_HOME="$RUNTIME_HOME"
 export CODEX_READER_HOST="$HOST"
@@ -109,24 +164,25 @@ fi
 
 PYTHON_DEPS_SCRIPT="$ROOT_DIR/infra/macos/ensure-python-pdf-deps.sh"
 if [ -x "$PYTHON_DEPS_SCRIPT" ]; then
+  log_runner "Checking Python PDF extractor dependencies"
   if "$PYTHON_DEPS_SCRIPT" "$ROOT_DIR" "$RUNTIME_HOME" >> "$RUNNER_LOG" 2>&1; then
     export CODEX_READER_PYTHON="$RUNTIME_HOME/python/bin/python"
+    log_runner "PyMuPDF4LLM extractor is ready"
   else
-    printf '[%s] PyMuPDF4LLM setup failed; legacy PDF extractor will be used.\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$RUNNER_LOG"
+    log_runner "PyMuPDF4LLM setup failed; legacy PDF extractor will be used"
   fi
 fi
 
 cd "$ROOT_DIR"
 
 if ! curl -fsS "$LOCAL_URL/health" >/dev/null 2>&1; then
-  {
-    printf '\n[%s] Starting Codex Reader server for Tunnel\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-    printf '[%s] Runtime home: %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$RUNTIME_HOME"
-  } >> "$RUNNER_LOG"
+  log_runner "Starting Codex Reader server for Tunnel"
+  log_runner "Runtime home: $RUNTIME_HOME"
 
   nohup node "$ROOT_DIR/apps/mac-runner/CodexReaderRunner.js" >> "$RUNNER_LOG" 2>&1 &
 fi
 
+print_line "Waiting for local server..."
 for _ in $(seq 1 30); do
   if curl -fsS "$LOCAL_URL/health" >/dev/null 2>&1; then
     break
@@ -135,9 +191,9 @@ for _ in $(seq 1 30); do
 done
 
 if ! curl -fsS "$LOCAL_URL/health" >/dev/null 2>&1; then
-  show_message "Codex Reader Tunnel" "The local server did not become ready. Check $RUNNER_LOG for details."
-  exit 1
+  fail_with_logs "The local server did not become ready."
 fi
+print_line "Local server is ready."
 
 if [ -n "$TUNNEL_URL" ] && curl -fsS "$TUNNEL_URL/health" >/dev/null 2>&1; then
   write_status true 1
@@ -148,13 +204,11 @@ if [ -n "$TUNNEL_URL" ] && curl -fsS "$TUNNEL_URL/health" >/dev/null 2>&1; then
 fi
 
 : > "$TUNNEL_LOG"
-{
-  printf '\n[%s] Starting Cloudflare Tunnel mode=%s -> %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$TUNNEL_MODE" "$LOCAL_URL"
-  printf '[%s] PATH: %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$PATH"
-  printf '[%s] npm cache: %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$NPM_CACHE_DIR"
-  printf '[%s] Discovery URL: %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$DISCOVERY_URL"
-  printf '[%s] Codex command: %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "${CODEX_READER_CODEX_COMMAND:-not found in launcher PATH}"
-} >> "$TUNNEL_LOG"
+log_tunnel "Starting Cloudflare Tunnel mode=$TUNNEL_MODE -> $LOCAL_URL"
+log_tunnel "PATH: $PATH"
+log_tunnel "npm cache: $NPM_CACHE_DIR"
+log_tunnel "Discovery URL: $DISCOVERY_URL"
+log_tunnel "Codex command: ${CODEX_READER_CODEX_COMMAND:-not found in launcher PATH}"
 
 if [ "$TUNNEL_MODE" = "named" ]; then
   if [ -z "$TUNNEL_URL" ]; then
@@ -171,6 +225,7 @@ if [ "$TUNNEL_MODE" = "named" ]; then
     exit 1
   fi
 else
+  print_line "Starting temporary Cloudflare Tunnel. First run can take a minute while Wrangler is downloaded."
   nohup npx --yes wrangler@latest tunnel quick-start "$LOCAL_URL" --log-level info >> "$TUNNEL_LOG" 2>&1 &
 fi
 
@@ -180,18 +235,19 @@ write_status false "$TUNNEL_PID" "$TUNNEL_URL"
 for _ in $(seq 1 45); do
   if ! kill -0 "$TUNNEL_PID" >/dev/null 2>&1; then
     write_status false 0
-    show_message "Codex Reader Tunnel" "The Tunnel process stopped. Check $TUNNEL_LOG."
-    exit 1
+    fail_with_logs "The Tunnel process stopped."
   fi
 
   if [ -z "$TUNNEL_URL" ]; then
     TUNNEL_URL="$(detect_quick_tunnel_url)"
     if [ -n "$TUNNEL_URL" ]; then
+      log_tunnel "Detected public tunnel URL: $TUNNEL_URL"
       write_status false "$TUNNEL_PID" "$TUNNEL_URL"
     fi
   fi
 
   if [ -n "$TUNNEL_URL" ] && curl -fsS "$TUNNEL_URL/health" >/dev/null 2>&1; then
+    log_tunnel "Public tunnel health check passed"
     write_status true "$TUNNEL_PID" "$TUNNEL_URL"
     register_tunnel_url "$TUNNEL_URL"
     open_pages "$TUNNEL_URL"
@@ -202,5 +258,4 @@ for _ in $(seq 1 45); do
 done
 
 write_status false "$TUNNEL_PID" "$TUNNEL_URL"
-show_message "Codex Reader Tunnel" "The Tunnel started but no reachable public URL was confirmed yet. Check $TUNNEL_LOG."
-exit 1
+fail_with_logs "The Tunnel started but no reachable public URL was confirmed yet."
