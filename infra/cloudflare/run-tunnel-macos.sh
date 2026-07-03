@@ -19,6 +19,9 @@ STATUS_FILE="$RUN_DIR/tunnel-status.json"
 MAC_RUNNER_PATH="$HOME/.npm-global/bin:$HOME/.local/bin:$HOME/.bun/bin:$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 export PATH="$MAC_RUNNER_PATH:${PATH:-}"
 NPM_CACHE_DIR="$RUNTIME_HOME/npm-cache"
+LOCAL_CURL_MAX_TIME="${CODEX_READER_LOCAL_CURL_MAX_TIME:-3}"
+PUBLIC_CURL_MAX_TIME="${CODEX_READER_PUBLIC_CURL_MAX_TIME:-8}"
+REGISTER_CURL_MAX_TIME="${CODEX_READER_REGISTER_CURL_MAX_TIME:-20}"
 export npm_config_cache="$NPM_CACHE_DIR"
 export NPM_CONFIG_CACHE="$NPM_CACHE_DIR"
 export npm_config_update_notifier=false
@@ -42,6 +45,12 @@ log_runner() {
   line="[$(date -u '+%Y-%m-%dT%H:%M:%SZ')] $message"
   print_line "$line"
   printf '%s\n' "$line" >> "$RUNNER_LOG"
+}
+
+http_ok() {
+  local url="$1"
+  local max_time="${2:-$PUBLIC_CURL_MAX_TIME}"
+  curl -fsS --connect-timeout 3 --max-time "$max_time" "$url" >/dev/null 2>&1
 }
 
 show_message() {
@@ -122,11 +131,17 @@ register_tunnel_url() {
   fi
 
   local payload
+  local response
+  local exit_code
   payload="$(node -e 'console.log(JSON.stringify({ apiBase: process.argv[1] }))' "$url")"
-  if curl -fsS -X POST -H "Content-Type: application/json" --data "$payload" "$DISCOVERY_URL/register" >> "$TUNNEL_LOG" 2>&1; then
+  if response="$(curl -fsS --connect-timeout 5 --max-time "$REGISTER_CURL_MAX_TIME" -X POST -H "Content-Type: application/json" --data "$payload" "$DISCOVERY_URL/register" 2>&1)"; then
+    printf '%s\n' "$response" >> "$TUNNEL_LOG"
     printf '\n[%s] Registered tunnel with discovery service: %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$DISCOVERY_URL" >> "$TUNNEL_LOG"
+    return 0
   else
-    printf '\n[%s] Discovery registration failed: %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$DISCOVERY_URL" >> "$TUNNEL_LOG"
+    exit_code=$?
+    printf '\n[%s] Discovery registration failed: %s (curl exit %s)\n%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$DISCOVERY_URL" "$exit_code" "$response" >> "$TUNNEL_LOG"
+    return 1
   fi
 }
 
@@ -175,7 +190,9 @@ fi
 
 cd "$ROOT_DIR"
 
-if ! curl -fsS "$LOCAL_URL/health" >/dev/null 2>&1; then
+write_status false 0 ""
+
+if ! http_ok "$LOCAL_URL/health" "$LOCAL_CURL_MAX_TIME"; then
   log_runner "Starting Codex Reader server for Tunnel"
   log_runner "Runtime home: $RUNTIME_HOME"
 
@@ -184,20 +201,20 @@ fi
 
 print_line "Waiting for local server..."
 for _ in $(seq 1 30); do
-  if curl -fsS "$LOCAL_URL/health" >/dev/null 2>&1; then
+  if http_ok "$LOCAL_URL/health" "$LOCAL_CURL_MAX_TIME"; then
     break
   fi
   sleep 1
 done
 
-if ! curl -fsS "$LOCAL_URL/health" >/dev/null 2>&1; then
+if ! http_ok "$LOCAL_URL/health" "$LOCAL_CURL_MAX_TIME"; then
   fail_with_logs "The local server did not become ready."
 fi
 print_line "Local server is ready."
 
-if [ -n "$TUNNEL_URL" ] && curl -fsS "$TUNNEL_URL/health" >/dev/null 2>&1; then
+if [ -n "$TUNNEL_URL" ] && http_ok "$TUNNEL_URL/health" "$PUBLIC_CURL_MAX_TIME"; then
   write_status true 1
-  register_tunnel_url "$TUNNEL_URL"
+  register_tunnel_url "$TUNNEL_URL" || true
   open_pages "$TUNNEL_URL"
   notify "Codex Reader Tunnel" "Tunnel is already online at $TUNNEL_URL"
   exit 0
@@ -243,13 +260,20 @@ for _ in $(seq 1 45); do
     if [ -n "$TUNNEL_URL" ]; then
       log_tunnel "Detected public tunnel URL: $TUNNEL_URL"
       write_status false "$TUNNEL_PID" "$TUNNEL_URL"
+      if register_tunnel_url "$TUNNEL_URL"; then
+        log_tunnel "Discovery service confirmed public tunnel health"
+        write_status true "$TUNNEL_PID" "$TUNNEL_URL"
+        open_pages "$TUNNEL_URL"
+        notify "Codex Reader Tunnel" "Tunnel is online at $TUNNEL_URL"
+        exit 0
+      fi
     fi
   fi
 
-  if [ -n "$TUNNEL_URL" ] && curl -fsS "$TUNNEL_URL/health" >/dev/null 2>&1; then
+  if [ -n "$TUNNEL_URL" ] && http_ok "$TUNNEL_URL/health" "$PUBLIC_CURL_MAX_TIME"; then
     log_tunnel "Public tunnel health check passed"
     write_status true "$TUNNEL_PID" "$TUNNEL_URL"
-    register_tunnel_url "$TUNNEL_URL"
+    register_tunnel_url "$TUNNEL_URL" || true
     open_pages "$TUNNEL_URL"
     notify "Codex Reader Tunnel" "Tunnel is online at $TUNNEL_URL"
     exit 0
