@@ -1,4 +1,4 @@
-const { execFile } = require("child_process");
+const { execFile, spawn } = require("child_process");
 const os = require("os");
 const path = require("path");
 const { promisify } = require("util");
@@ -70,18 +70,17 @@ class CodexAdapter {
 
     const prompt = buildPrompt(jobType, context);
     const args = buildCodexArgs(jobType, this.config);
-    args.push(prompt);
 
     try {
       const codexCommand = await this.resolveCodexCommand();
-      const { stdout, stderr } = await execFileAsync(codexCommand, args, {
+      const { stdout, stderr } = await runCodexCommand(codexCommand, args, prompt, {
         timeout: this.config.codexTimeoutMs,
         maxBuffer: 1024 * 1024 * 4,
         env: buildCommandEnv()
       });
-      const parsed = parseCodexJson(stdout);
+      const parsed = parseCodexJson(stdout, stderr);
       if (!parsed) {
-        throw new Error(`Codex returned non-JSON output. ${stderr || ""}`.trim());
+        throw new Error(`Codex returned non-JSON output. ${formatCodexOutputError(stdout, stderr)}`.trim());
       }
       return sanitizeCodexResult(parsed);
     } catch (error) {
@@ -97,6 +96,74 @@ class CodexAdapter {
       return fallbackResult(jobType, context, `Codex execution failed: ${error.message}`);
     }
   }
+}
+
+function runCodexCommand(command, args, input, options = {}) {
+  const timeout = Number(options.timeout || 120000);
+  const maxBuffer = Number(options.maxBuffer || 1024 * 1024 * 4);
+
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      env: options.env,
+      stdio: ["pipe", "pipe", "pipe"]
+    });
+    const stdoutChunks = [];
+    const stderrChunks = [];
+    let settled = false;
+
+    const timer = setTimeout(() => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      child.kill("SIGTERM");
+      reject(new Error(`Codex CLI timed out after ${timeout} ms.`));
+    }, timeout);
+
+    function append(chunks, chunk, streamName) {
+      chunks.push(chunk);
+      const size = chunks.reduce((sum, item) => sum + item.length, 0);
+      if (size <= maxBuffer || settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      child.kill("SIGTERM");
+      reject(new Error(`Codex CLI ${streamName} exceeded ${maxBuffer} bytes.`));
+    }
+
+    child.stdout.on("data", (chunk) => append(stdoutChunks, chunk, "stdout"));
+    child.stderr.on("data", (chunk) => append(stderrChunks, chunk, "stderr"));
+
+    child.on("error", (error) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      reject(error);
+    });
+
+    child.on("close", (code, signal) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      const stdout = Buffer.concat(stdoutChunks).toString("utf8");
+      const stderr = Buffer.concat(stderrChunks).toString("utf8");
+      if (code === 0) {
+        resolve({ stdout, stderr });
+        return;
+      }
+      const error = new Error(`Codex CLI exited with code ${code ?? "unknown"}${signal ? ` signal ${signal}` : ""}. ${formatCodexOutputError(stdout, stderr)}`.trim());
+      error.stdout = stdout;
+      error.stderr = stderr;
+      reject(error);
+    });
+
+    child.stdin.end(`${input || ""}\n`);
+  });
 }
 
 function buildCodexArgs(jobType, config = {}) {
@@ -406,60 +473,212 @@ function stripMarkdownOutputMarkers(value) {
     .trim();
 }
 
-function parseCodexJson(stdout) {
-  const text = String(stdout || "").trim();
+function parseCodexJson(stdout, stderr = "") {
+  const texts = uniqueList([stdout, stderr, `${stdout || ""}\n${stderr || ""}`]);
+  for (const text of texts) {
+    const parsed = parseCodexText(text);
+    if (parsed) {
+      return parsed;
+    }
+  }
+  return null;
+}
+
+function parseCodexText(value) {
+  const text = String(value || "").trim();
   if (!text) {
     return null;
   }
 
-  try {
-    return JSON.parse(text);
-  } catch {
-    // Codex JSON mode can emit JSONL events. Look for text-like fields or a final object.
+  const direct = tryParseJson(text);
+  const directResult = pickCodexResult(direct);
+  if (directResult) {
+    return directResult;
+  }
+  if (direct && typeof direct === "object" && !Array.isArray(direct) && !isLikelyCodexEvent(direct)) {
+    return direct;
+  }
+
+  const parsedObjects = extractJsonObjects(text);
+  for (let i = parsedObjects.length - 1; i >= 0; i -= 1) {
+    const result = pickCodexResult(parsedObjects[i]);
+    if (result) {
+      return result;
+    }
+  }
+  if (parsedObjects.length === 1 && !isLikelyCodexEvent(parsedObjects[0])) {
+    return parsedObjects[0];
   }
 
   const lines = text.split(/\r?\n/).filter(Boolean);
-  for (let i = lines.length - 1; i >= 0; i -= 1) {
-    try {
-      const event = JSON.parse(lines[i]);
-      const candidate =
-        event.output ||
-        event.result ||
-        event.final ||
-        event.response ||
-        event.message ||
-        event.text ||
-        event.content;
-      if (typeof candidate === "string") {
-        const parsed = extractJsonObject(candidate);
-        if (parsed) {
-          return parsed;
-        }
-      }
-      if (candidate && typeof candidate === "object") {
-        return candidate;
-      }
-    } catch {
-      continue;
+  const fragments = [];
+  for (const line of lines) {
+    const event = tryParseJson(line);
+    if (event) {
+      fragments.push(...collectCodexTextFragments(event));
+    }
+  }
+  if (fragments.length) {
+    const result = parseCodexText(fragments.join(""));
+    if (result) {
+      return result;
     }
   }
 
-  return extractJsonObject(text);
+  return null;
 }
 
-function extractJsonObject(text) {
-  const source = String(text || "");
-  const first = source.indexOf("{");
-  const last = source.lastIndexOf("}");
-  if (first === -1 || last === -1 || last <= first) {
+function pickCodexResult(value, depth = 0) {
+  if (!value || depth > 8) {
     return null;
   }
+  if (typeof value === "string") {
+    return parseCodexText(value);
+  }
+  if (Array.isArray(value)) {
+    for (let i = value.length - 1; i >= 0; i -= 1) {
+      const result = pickCodexResult(value[i], depth + 1);
+      if (result) {
+        return result;
+      }
+    }
+    return null;
+  }
+  if (typeof value !== "object") {
+    return null;
+  }
+  if (looksLikeCodexResult(value)) {
+    return value;
+  }
 
+  for (const key of ["output", "result", "final", "response", "message", "text", "content", "data", "item", "payload"]) {
+    if (Object.prototype.hasOwnProperty.call(value, key)) {
+      const result = pickCodexResult(value[key], depth + 1);
+      if (result) {
+        return result;
+      }
+    }
+  }
+
+  return null;
+}
+
+function looksLikeCodexResult(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  return [
+    "summary_original",
+    "summary_ko",
+    "full_text_translation_ko",
+    "translation_ko",
+    "follow_up_questions",
+    "explanation_original",
+    "explanation_ko",
+    "claim",
+    "verdict",
+    "answer",
+    "question"
+  ].some((key) => Object.prototype.hasOwnProperty.call(value, key));
+}
+
+function isLikelyCodexEvent(value) {
+  return Boolean(
+    value &&
+      typeof value === "object" &&
+      !Array.isArray(value) &&
+      typeof value.type === "string" &&
+      !looksLikeCodexResult(value)
+  );
+}
+
+function collectCodexTextFragments(value, depth = 0) {
+  if (!value || depth > 8) {
+    return [];
+  }
+  if (typeof value === "string") {
+    return [value];
+  }
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => collectCodexTextFragments(item, depth + 1));
+  }
+  if (typeof value !== "object") {
+    return [];
+  }
+
+  const fragments = [];
+  for (const key of ["delta", "text", "message", "content", "output", "result", "final", "response"]) {
+    if (Object.prototype.hasOwnProperty.call(value, key)) {
+      fragments.push(...collectCodexTextFragments(value[key], depth + 1));
+    }
+  }
+  return fragments;
+}
+
+function extractJsonObjects(text) {
+  const source = String(text || "");
+  const objects = [];
+  let start = -1;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let i = 0; i < source.length; i += 1) {
+    const char = source[i];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === "\"") {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (char === "\"") {
+      inString = true;
+      continue;
+    }
+    if (char === "{") {
+      if (depth === 0) {
+        start = i;
+      }
+      depth += 1;
+    } else if (char === "}" && depth > 0) {
+      depth -= 1;
+      if (depth === 0 && start !== -1) {
+        const parsed = tryParseJson(source.slice(start, i + 1));
+        if (parsed) {
+          objects.push(parsed);
+        }
+        start = -1;
+      }
+    }
+  }
+
+  return objects;
+}
+
+function tryParseJson(text) {
   try {
-    return JSON.parse(source.slice(first, last + 1));
+    return JSON.parse(String(text || "").trim());
   } catch {
     return null;
   }
+}
+
+function formatCodexOutputError(stdout, stderr) {
+  const parts = [];
+  const stderrText = normalizeWhitespace(stderr || "");
+  const stdoutText = normalizeWhitespace(stdout || "");
+  if (stderrText) {
+    parts.push(`stderr: ${stderrText.slice(0, 500)}`);
+  }
+  if (stdoutText) {
+    parts.push(`stdout: ${stdoutText.slice(0, 500)}`);
+  }
+  return parts.join(" ");
 }
 
 function fallbackResult(jobType, context, caveat) {

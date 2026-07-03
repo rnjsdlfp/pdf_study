@@ -97,6 +97,28 @@ test("Codex JSON parser finds final JSON object", () => {
   assert.equal(parsed.ok, true);
 });
 
+test("Codex JSON parser ignores stdin notices and reads JSONL messages", () => {
+  const parsed = parseCodexJson(
+    [
+      '{"type":"session.started","message":"Reading additional input from stdin..."}',
+      '{"type":"agent_message","message":"{\\"summary_original\\":\\"Five sentence summary\\",\\"summary_ko\\":\\"요약\\",\\"terms\\":[],\\"full_text_translation_ko\\":\\"번역\\",\\"follow_up_questions_original\\":[],\\"follow_up_questions_ko\\":[]}"}'
+    ].join("\n"),
+    "Reading additional input from stdin..."
+  );
+  assert.equal(parsed.summary_original, "Five sentence summary");
+});
+
+test("Codex JSON parser reconstructs streamed JSON deltas", () => {
+  const parsed = parseCodexJson(
+    [
+      '{"type":"agent_message_delta","delta":"{\\"answer\\":\\"핵심 근거 - 매출 성장\\","}',
+      '{"type":"agent_message_delta","delta":"\\"question\\":\\"무엇이 핵심인가?\\",\\"sources\\":[],\\"caveats\\":[]}"}'
+    ].join("\n")
+  );
+  assert.equal(parsed.answer, "핵심 근거 - 매출 성장");
+  assert.equal(parsed.question, "무엇이 핵심인가?");
+});
+
 test("Codex result sanitizer removes markdown emphasis markers", () => {
   const cleaned = sanitizeCodexResult({
     summary_original: "**Sharp inflection** expected",
