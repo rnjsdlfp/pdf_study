@@ -49,7 +49,7 @@ function createConfig(overrides = {}) {
       "true",
     codexTimeoutMs: parseNumber(
       overrides.codexTimeoutMs || process.env.CODEX_READER_CODEX_TIMEOUT_MS,
-      120000
+      360000
     ),
     maxUploadBytes:
       parseNumber(overrides.maxUploadMb || process.env.CODEX_READER_MAX_UPLOAD_MB, 200) *

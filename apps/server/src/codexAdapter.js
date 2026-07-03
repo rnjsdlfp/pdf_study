@@ -122,7 +122,7 @@ class CodexAdapter {
 }
 
 function runCodexCommand(command, args, input, options = {}) {
-  const timeout = Number(options.timeout || 120000);
+  const timeout = Number(options.timeout || 360000);
   const maxBuffer = Number(options.maxBuffer || 1024 * 1024 * 4);
 
   return new Promise((resolve, reject) => {
@@ -518,6 +518,8 @@ function outputStyleInstruction(outputLanguage) {
   return [
     "Output style: keep the core content concise, clear, and itemized in gaejo-sik style (개조식).",
     "Prefer short point-by-point lines over long paragraphs when a field contains multiple ideas.",
+    "Use visible line breaks between subtopics. Prefer bullets or numbered points for multi-part answers.",
+    "For subtopics, write labels as `Topic: detail` so the reader UI can emphasize the label. Do not use Markdown bold markers.",
     "For Korean, this means using noun-form sentence endings (명사형 종결어미) where natural.",
     koreanClause
   ].join(" ");

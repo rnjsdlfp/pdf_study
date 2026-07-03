@@ -27,7 +27,7 @@ const API_DISCOVERY_URL = normalizeApiBase(window.CODEX_READER_CONFIG?.discovery
 const APP_API_BASE_STORAGE_KEY = window.CODEX_READER_CONFIG?.apiBaseStorageKey || "codexReaderApiBaseV2";
 const FORCE_API_DISCOVERY = Boolean(window.CODEX_READER_CONFIG?.forceDiscovery);
 const PREFER_SAME_ORIGIN_API = Boolean(window.CODEX_READER_CONFIG?.preferSameOriginApi);
-const APP_BUILD_VERSION = "20260704-toast-errors-v1";
+const APP_BUILD_VERSION = "20260704-readable-sidebar-v1";
 const ACTIVE_PROMPT_VERSION = "2026-07-03-default-followup-style";
 const DEFAULT_FOLLOW_UP_QUESTIONS = Object.freeze({
   English: [
@@ -438,7 +438,7 @@ async function pollStatus() {
   } catch (error) {
     setStatus(els.serverStatus, false, "MacBook offline");
     els.serverStatus.title = `Status check failed: ${error.message || error}\nAPI: /api/system/status\nBuild: ${APP_BUILD_VERSION}`;
-    console.error("Codex Reader status check failed", error);
+    console.error("Jireh's Deep Study status check failed", error);
     if (!statusErrorShown) {
       statusErrorShown = true;
       reportError(error, "Status check failed", { key: "status-check" });
@@ -1061,13 +1061,13 @@ function renderManualJobResult(type, job) {
     `;
   }
   if (job.error) {
-    return `<span class="job-status ${status}">${status}</span><div>${escapeHtml(job.error)}</div>`;
+    return `<span class="job-status ${status}">${status}</span>${renderReadableText(job.error)}`;
   }
   if (type === "fact_check") {
     return `
       <span class="job-status ${status}">${status}</span>
       <strong>${escapeHtml(cleanDisplayText(result.verdict || "unclear"))}</strong>
-      <div>${escapeHtml(cleanDisplayText(result.explanation_ko || ""))}</div>
+      ${renderReadableText(result.explanation_ko || "")}
       ${renderManualSources(result.sources || [])}
     `;
   }
@@ -1076,7 +1076,7 @@ function renderManualJobResult(type, job) {
     : result.explanation_original || result.explanation_ko || "";
   return `
     <span class="job-status ${status}">${status}</span>
-    <div>${escapeHtml(cleanDisplayText(text || "No explanation returned."))}</div>
+    ${renderReadableText(text || "No explanation returned.")}
   `;
 }
 
@@ -1093,12 +1093,12 @@ function renderFollowUpAnswer(job) {
     `;
   }
   if (job.error) {
-    return `<span class="job-status ${status}">${status}</span><div>${escapeHtml(job.error)}</div>`;
+    return `<span class="job-status ${status}">${status}</span>${renderReadableText(job.error)}`;
   }
   const result = job.result || {};
   return `
     <span class="job-status ${status}">${status}</span>
-    <div>${escapeHtml(cleanDisplayText(result.answer || "No answer returned."))}</div>
+    ${renderReadableText(result.answer || "No answer returned.")}
     ${renderManualSources(result.sources || [])}
   `;
 }
@@ -1126,6 +1126,80 @@ function renderManualSources(sources) {
     })
     .join("");
   return `<ol class="manual-source-list">${items}</ol>`;
+}
+
+function renderReadableText(value) {
+  const text = String(value || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\\n/g, "\n")
+    .replace(/[ \t]+\n/g, "\n")
+    .trim();
+  if (!text) {
+    return `<div class="readable-text"><p>${escapeHtml("No response returned.")}</p></div>`;
+  }
+
+  const lines = text
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  let html = "";
+  let openList = "";
+
+  function closeList() {
+    if (openList) {
+      html += `</${openList}>`;
+      openList = "";
+    }
+  }
+
+  function open(tag) {
+    if (openList !== tag) {
+      closeList();
+      html += `<${tag}>`;
+      openList = tag;
+    }
+  }
+
+  for (const line of lines) {
+    const bullet = line.match(/^[-*\u2022]\s+(.+)$/);
+    if (bullet) {
+      open("ul");
+      html += `<li>${renderInlineReadable(bullet[1])}</li>`;
+      continue;
+    }
+
+    const numbered = line.match(/^\d+[.)]\s+(.+)$/);
+    if (numbered) {
+      open("ol");
+      html += `<li>${renderInlineReadable(numbered[1])}</li>`;
+      continue;
+    }
+
+    closeList();
+    if (isReadableHeading(line)) {
+      html += `<h4>${renderInlineReadable(line.replace(/:\s*$/, ""))}</h4>`;
+      continue;
+    }
+    html += `<p>${renderInlineReadableWithLabel(line)}</p>`;
+  }
+  closeList();
+  return `<div class="readable-text">${html}</div>`;
+}
+
+function isReadableHeading(line) {
+  return /^[^:]{2,72}:\s*$/.test(line) && !/https?:\/\//i.test(line);
+}
+
+function renderInlineReadableWithLabel(line) {
+  const match = line.match(/^([^:\n]{2,56}):\s+(.+)$/);
+  if (match && !/https?:\/\//i.test(match[1]) && match[1].trim().split(/\s+/).length <= 8) {
+    return `<strong>${renderInlineReadable(match[1])}:</strong> ${renderInlineReadable(match[2])}`;
+  }
+  return renderInlineReadable(line);
+}
+
+function renderInlineReadable(value) {
+  return escapeHtml(String(value || "")).replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
 }
 
 function highlight(html, query) {

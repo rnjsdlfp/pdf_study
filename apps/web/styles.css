@@ -245,7 +245,7 @@ svg {
 
 .workspace {
   display: grid;
-  grid-template-columns: 244px minmax(0, 1fr) 360px;
+  grid-template-columns: 244px minmax(0, 1fr) 396px;
   height: calc(100vh - 64px);
   min-height: 0;
 }
@@ -694,7 +694,8 @@ mark {
   line-height: 1.55;
   min-height: 42px;
   padding: 10px;
-  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .manual-output strong {
@@ -751,6 +752,49 @@ mark {
   color: var(--muted);
   font-size: 13px;
   line-height: 1.55;
+}
+
+.readable-text {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.readable-text p {
+  margin: 0 0 9px;
+}
+
+.readable-text p:last-child,
+.readable-text ul:last-child,
+.readable-text ol:last-child {
+  margin-bottom: 0;
+}
+
+.readable-text h4 {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.35;
+  margin: 12px 0 6px;
+}
+
+.readable-text h4:first-child {
+  margin-top: 0;
+}
+
+.readable-text strong {
+  color: var(--text);
+  font-weight: 800;
+}
+
+.readable-text ul,
+.readable-text ol {
+  margin: 0 0 10px;
+  padding-left: 18px;
+}
+
+.readable-text li {
+  margin: 0 0 6px;
+  padding-left: 2px;
 }
 
 .term-item,
@@ -814,6 +858,7 @@ mark {
   line-height: 1.55;
   margin-top: 7px;
   padding: 10px;
+  overflow-wrap: anywhere;
 }
 
 .job-status {
