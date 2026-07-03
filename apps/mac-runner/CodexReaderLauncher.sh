@@ -6,10 +6,12 @@ PORT="${CODEX_READER_PORT:-3001}"
 HOST="${CODEX_READER_HOST:-127.0.0.1}"
 URL="http://${HOST}:${PORT}"
 RUNTIME_HOME="${CODEX_READER_HOME:-$HOME/Library/Application Support/CodexReader}"
+CODEX_AUTH_HOME="${CODEX_HOME:-$HOME/.codex}"
 LOG_DIR="$RUNTIME_HOME/logs"
 LAUNCH_LOG="$LOG_DIR/launcher.log"
 MAC_RUNNER_PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$HOME/.npm-global/bin:$HOME/.local/bin:$HOME/.codex/bin:$HOME/.bun/bin:$HOME/.cargo/bin"
 export PATH="$MAC_RUNNER_PATH:${PATH:-}"
+export CODEX_HOME="$CODEX_AUTH_HOME"
 CODEX_CLI_HELPER="$ROOT_DIR/infra/macos/codex-cli.sh"
 if [ -r "$CODEX_CLI_HELPER" ]; then
   # shellcheck source=/dev/null
@@ -73,6 +75,12 @@ cd "$ROOT_DIR"
 {
   printf '\n[%s] Launch requested from %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$ROOT_DIR"
   printf '[%s] Runtime home: %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$RUNTIME_HOME"
+  printf '[%s] Codex auth home: %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$CODEX_HOME"
+  if [ -f "$CODEX_HOME/auth.json" ]; then
+    printf '[%s] Codex auth file: found\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+  else
+    printf '[%s] Codex auth file: missing\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+  fi
   printf '[%s] PATH: %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$PATH"
   printf '[%s] Codex command: %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "${CODEX_READER_CODEX_COMMAND:-not found in launcher PATH}"
 } >> "$LAUNCH_LOG"

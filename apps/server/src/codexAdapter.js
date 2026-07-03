@@ -1,4 +1,5 @@
 const { execFile, spawn } = require("child_process");
+const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { promisify } = require("util");
@@ -29,12 +30,16 @@ class CodexAdapter {
     const rootHelp = cli.ok ? await commandOk(codexCommand, ["--help"], 5000) : { ok: false, stdout: "", stderr: "" };
     const execHelp = cli.ok ? await commandOk(codexCommand, ["exec", "--help"], 5000) : { ok: false, stdout: "", stderr: "" };
     const searchMode = detectCodexSearchMode(rootHelp, execHelp);
+    const auth = inspectCodexAuthEnv();
 
     this.statusCache = {
       codex_cli_available: cli.ok,
       codex_command: cli.ok ? codexCommand : "",
       codex_version: normalizeWhitespace(cli.stdout || cli.stderr || ""),
-      codex_login_ok: cli.ok,
+      codex_login_ok: cli.ok && (auth.auth_file_ok || auth.auth_env_ok),
+      codex_auth_home: auth.home,
+      codex_auth_file_ok: auth.auth_file_ok,
+      codex_auth_env_ok: auth.auth_env_ok,
       codex_web_search_ok: cli.ok && searchMode !== "none",
       codex_web_search_mode: cli.ok ? searchMode : "none",
       codex_mode: this.config.codexMode,
@@ -310,17 +315,60 @@ async function resolveFromLoginShell() {
   return "";
 }
 
-function buildCommandEnv() {
+function buildCommandEnv(env = process.env) {
+  const auth = inspectCodexAuthEnv(env);
+  const home = env.HOME || os.homedir();
+  const userProfile = env.USERPROFILE || os.homedir();
   return {
-    ...process.env,
-    PATH: uniqueList([...commonBinDirs(), process.env.PATH || ""]).join(path.delimiter)
+    ...env,
+    HOME: home,
+    USERPROFILE: userProfile,
+    CODEX_HOME: auth.home || env.CODEX_HOME || joinPathIf(home, ".codex"),
+    PATH: uniqueList([...commonBinDirs(home, env), env.PATH || ""]).join(path.delimiter)
   };
 }
 
-function commonBinDirs() {
-  const home = os.homedir();
+function inspectCodexAuthEnv(env = process.env) {
+  const candidates = codexHomeCandidates(env);
+  const homeWithAuth = candidates.find((candidate) => fileExists(path.join(candidate, "auth.json")));
+  const home = homeWithAuth || candidates[0] || "";
+  return {
+    home,
+    auth_file_ok: Boolean(home && fileExists(path.join(home, "auth.json"))),
+    auth_env_ok: hasCodexAuthEnv(env)
+  };
+}
+
+function codexHomeCandidates(env = process.env) {
+  const home = env.HOME || os.homedir();
+  const userProfile = env.USERPROFILE || os.homedir();
   return uniqueList([
-    process.env.CODEX_READER_BIN_DIR || "",
+    env.CODEX_HOME || "",
+    joinPathIf(home, ".codex"),
+    joinPathIf(userProfile, ".codex"),
+    joinPathIf(os.homedir(), ".codex")
+  ]);
+}
+
+function hasCodexAuthEnv(env = process.env) {
+  return ["OPENAI_API_KEY", "CODEX_API_KEY"].some((name) => Boolean(String(env[name] || "").trim()));
+}
+
+function joinPathIf(base, ...parts) {
+  return base ? path.join(base, ...parts) : "";
+}
+
+function fileExists(filePath) {
+  try {
+    return Boolean(filePath && fs.statSync(filePath).isFile());
+  } catch {
+    return false;
+  }
+}
+
+function commonBinDirs(home = os.homedir(), env = process.env) {
+  return uniqueList([
+    env.CODEX_READER_BIN_DIR || "",
     path.join(home, ".npm-global", "bin"),
     path.join(home, ".local", "bin"),
     path.join(home, ".codex", "bin"),
@@ -890,8 +938,10 @@ function truncate(value, max) {
 module.exports = {
   CodexAdapter,
   buildCodexArgs,
+  buildCommandEnv,
   buildPrompt,
   firstCommandWord,
+  inspectCodexAuthEnv,
   parseCodexJson,
   codexCommandCandidates,
   requiresCodexCli,

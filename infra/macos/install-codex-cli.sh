@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 RUNTIME_HOME="${CODEX_READER_HOME:-$HOME/Library/Application Support/CodexReader}"
+CODEX_AUTH_HOME="${CODEX_HOME:-$HOME/.codex}"
 LOG_DIR="$RUNTIME_HOME/logs"
 LOG_FILE="$LOG_DIR/codex-cli-install.log"
 NPM_PREFIX="${CODEX_READER_NPM_PREFIX:-$HOME/.npm-global}"
@@ -13,6 +14,7 @@ export npm_config_cache="$NPM_CACHE_DIR"
 export NPM_CONFIG_CACHE="$NPM_CACHE_DIR"
 export npm_config_update_notifier=false
 export NPM_CONFIG_UPDATE_NOTIFIER=false
+export CODEX_HOME="$CODEX_AUTH_HOME"
 
 CODEX_CLI_HELPER="$ROOT_DIR/infra/macos/codex-cli.sh"
 if [ -r "$CODEX_CLI_HELPER" ]; then
@@ -85,10 +87,13 @@ fi
 VERSION="$("$CODEX_COMMAND" --version 2>&1 || true)"
 log_line "Codex CLI ready: $CODEX_COMMAND"
 log_line "Version: $VERSION"
+log_line "Codex auth home: $CODEX_HOME"
 
 print_line ""
 print_line "Codex CLI is ready:"
 print_line "  $CODEX_COMMAND"
+print_line "Codex auth home:"
+print_line "  $CODEX_HOME"
 print_line ""
 
 if [ -t 0 ]; then

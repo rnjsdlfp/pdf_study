@@ -11,6 +11,7 @@ TUNNEL_MODE="${CODEX_READER_TUNNEL_MODE:-quick}"
 TUNNEL_ID="${CODEX_READER_TUNNEL_ID:-}"
 TUNNEL_URL="${CODEX_READER_TUNNEL_URL:-}"
 RUNTIME_HOME="${CODEX_READER_HOME:-$HOME/Library/Application Support/CodexReader}"
+CODEX_AUTH_HOME="${CODEX_HOME:-$HOME/.codex}"
 LOG_DIR="$RUNTIME_HOME/logs"
 RUN_DIR="$RUNTIME_HOME/run"
 RUNNER_LOG="$LOG_DIR/launcher.log"
@@ -29,6 +30,7 @@ export npm_config_cache="$NPM_CACHE_DIR"
 export NPM_CONFIG_CACHE="$NPM_CACHE_DIR"
 export npm_config_update_notifier=false
 export NPM_CONFIG_UPDATE_NOTIFIER=false
+export CODEX_HOME="$CODEX_AUTH_HOME"
 if [ -r "$CODEX_CLI_HELPER" ]; then
   # shellcheck source=/dev/null
   . "$CODEX_CLI_HELPER"
@@ -280,6 +282,12 @@ log_tunnel "PATH: $PATH"
 log_tunnel "npm cache: $NPM_CACHE_DIR"
 log_tunnel "Discovery URL: $DISCOVERY_URL"
 log_tunnel "Codex command: ${CODEX_READER_CODEX_COMMAND:-not found in launcher PATH}"
+log_tunnel "Codex auth home: $CODEX_HOME"
+if [ -f "$CODEX_HOME/auth.json" ]; then
+  log_tunnel "Codex auth file: found"
+else
+  log_tunnel "Codex auth file: missing"
+fi
 
 if [ "$TUNNEL_MODE" = "named" ]; then
   if [ -z "$TUNNEL_URL" ]; then

@@ -1,5 +1,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
 const {
   makeCacheKey,
   validateSelectionText,
@@ -19,8 +22,10 @@ const {
   parseCodexJson,
   codexCommandCandidates,
   buildCodexArgs,
+  buildCommandEnv,
   buildPrompt,
   firstCommandWord,
+  inspectCodexAuthEnv,
   sanitizeCodexResult,
   makeSpecializedTerms,
   defaultFollowUpQuestions
@@ -151,6 +156,33 @@ test("Codex command lookup includes explicit and common paths", () => {
   assert.equal(candidates.some((candidate) => /[\\/]\.codex[\\/]bin[\\/]codex/.test(candidate)), true);
   if (process.platform === "darwin") {
     assert.equal(candidates.includes("/Applications/Codex.app/Contents/Resources/codex"), true);
+  }
+});
+
+test("Codex auth environment exposes auth home to child processes", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "codex-reader-auth-"));
+  try {
+    const codexHome = path.join(tmp, "custom-codex-home");
+    const home = path.join(tmp, "home");
+    fs.mkdirSync(codexHome, { recursive: true });
+    fs.mkdirSync(home, { recursive: true });
+    fs.writeFileSync(path.join(codexHome, "auth.json"), "{}");
+
+    const env = {
+      CODEX_HOME: codexHome,
+      HOME: home,
+      PATH: "/usr/bin"
+    };
+    const auth = inspectCodexAuthEnv(env);
+    const commandEnv = buildCommandEnv(env);
+
+    assert.equal(auth.home, codexHome);
+    assert.equal(auth.auth_file_ok, true);
+    assert.equal(auth.auth_env_ok, false);
+    assert.equal(commandEnv.CODEX_HOME, codexHome);
+    assert.equal(commandEnv.HOME, home);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
 
