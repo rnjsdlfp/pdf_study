@@ -107,7 +107,11 @@ function buildCodexArgs(jobType, config = {}) {
   if (config.codexModel) {
     args.push("--model", String(config.codexModel));
   }
-  if (jobType === JOB_TYPES.SELECTION_FACT_CHECK) {
+  if (
+    jobType === JOB_TYPES.PAGE_ANALYSIS ||
+    jobType === JOB_TYPES.DOCUMENT_ANALYSIS ||
+    jobType === JOB_TYPES.SELECTION_FACT_CHECK
+  ) {
     args.push("--search");
   }
   return args;
@@ -248,9 +252,11 @@ function buildPrompt(jobType, context) {
       '{"claim":"string","verdict":"supported|contradicted|unclear|not_checkable","explanation_ko":"string","sources":[{"title":"string","url":"string","publisher":"string","published_date":"string","accessed_date":"' +
         date +
         '","relevance":"high|medium|low"}],"caveats":["string"],"confidence":"high|medium|low"}',
-      "Use web search. Cite external sources. If the claim cannot be checked, use not_checkable. Use plain text only. Do not use Markdown, bold markers, headings, or ** anywhere in string values.",
+      "This request came from the right-sidebar manual Fact-check input. Treat the user-provided text as the exact claim or claim bundle to verify. Use surrounding context only to understand wording, entities, dates, and units.",
+      "Use web search. Cite external sources. If the claim cannot be checked, use not_checkable. Use plain text only. Do not use Markdown, bold markers, headings, or double-asterisk emphasis markers anywhere in string values.",
       `Document title: ${context.document_title || "Untitled"}`,
-      `Claim or selected text:\n${text}`
+      `Claim or manual fact-check target:\n${text}`,
+      `Document context:\n${truncate(context.surrounding_text || "", 4000)}`
     ].join("\n\n");
   }
 
@@ -258,10 +264,11 @@ function buildPrompt(jobType, context) {
     return [
       "Return JSON only, matching this schema:",
       '{"explanation_original":"string","explanation_ko":"string","terms":[{"term":"string","definition_original":"string","definition_ko":"string"}],"translation_ko":"string","follow_up_questions":["string"]}',
-      "Use the source document language for explanation_original and definition_original. Put Korean only in explanation_ko, definition_ko, and translation_ko. Do not use web search. Use plain text only. Do not use Markdown, bold markers, headings, or ** anywhere in string values.",
+      "This request came from the right-sidebar manual Explain input. Explain the exact user-provided target text. Use surrounding context only to disambiguate the target, connect it to the document, and avoid overexplaining unrelated material.",
+      "Use the source document language for explanation_original and definition_original. Put Korean only in explanation_ko, definition_ko, and translation_ko. Do not use web search. Use plain text only. Do not use Markdown, bold markers, headings, or double-asterisk emphasis markers anywhere in string values.",
       termSelectionInstruction(5),
       `Document title: ${context.document_title || "Untitled"}`,
-      `Selected text:\n${text}`,
+      `Manual explain target:\n${text}`,
       `Surrounding context:\n${truncate(context.surrounding_text || "", 4000)}`
     ].join("\n\n");
   }
@@ -270,8 +277,10 @@ function buildPrompt(jobType, context) {
     "Return JSON only, matching this schema:",
     '{"summary_original":"string","summary_ko":"string","terms":[{"term":"string","definition_original":"string","definition_ko":"string"}],"follow_up_questions_original":["string"],"follow_up_questions_ko":["string"],"full_text_translation_ko":"string","translation_ko":"string","sources":[]}',
     "Use Codex CLI reasoning for every field. Analyze the source text in the source language for summary_original, definition_original, and follow_up_questions_original. Put Korean only in summary_ko, definition_ko, follow_up_questions_ko, full_text_translation_ko, and translation_ko.",
-    "translation_ko must be the same value as full_text_translation_ko for backward compatibility. full_text_translation_ko should translate the provided extracted body text, preserving page cues and important numbers. Do not use web search. Keep Summary, Terms, and Follow-up Questions concise and useful for research reading.",
-    "Use plain text only. Do not use Markdown, bold markers, headings, bullet syntax, or ** anywhere in string values.",
+    "translation_ko must be the same value as full_text_translation_ko for backward compatibility. full_text_translation_ko should translate the provided extracted body text, preserving page cues and important numbers. Keep Summary and Terms concise and useful for research reading.",
+    "Use web search to strengthen Follow-up Questions only: ground the questions in the extracted text, current public context, and plausible counter-evidence. Do not turn follow-up questions into a source list.",
+    followUpQuestionsInstruction(),
+    "Use plain text only. Do not use Markdown, bold markers, headings, bullet syntax, or double-asterisk emphasis markers anywhere in string values.",
     termSelectionInstruction(10),
     `Analysis scope: ${jobType}`,
     `Document title: ${context.document_title || "Untitled"}`,
@@ -288,6 +297,14 @@ function termSelectionInstruction(targetCount) {
     `Terms selection criteria: return about ${targetCount} terms when available.`,
     "Prioritize abbreviations, acronyms, tickers, metric names, endpoints, regulatory/commercial shorthand, and genuinely difficult domain-specific words.",
     "Prefer terms that affect interpretation of the document. Exclude generic business words, ordinary verbs/adjectives, boilerplate, and company names unless the abbreviation or ticker itself needs explanation."
+  ].join(" ");
+}
+
+function followUpQuestionsInstruction() {
+  return [
+    "Follow-up Questions criteria: create a diverse set of research prompts, not generic study questions.",
+    "Include prompts for deeper understanding of the topic, questions that challenge or invert the document's assumptions, questions that seek missing evidence, and thought experiments that develop the idea further.",
+    "Prefer questions that would help an analyst test causal claims, quantify uncertainty, compare alternative explanations, or decide what to investigate next."
   ].join(" ");
 }
 

@@ -19,6 +19,7 @@ const {
   parseCodexJson,
   codexCommandCandidates,
   buildCodexArgs,
+  buildPrompt,
   firstCommandWord,
   sanitizeCodexResult,
   makeSpecializedTerms
@@ -145,7 +146,18 @@ test("Codex execution args match automation defaults", () => {
     "--model",
     "gpt-5.5"
   ]);
+  assert.equal(args.includes("--search"), true);
   assert.equal(firstCommandWord("codex exec --skip-git-repo-check"), "codex");
+});
+
+test("analysis prompt asks Codex for web-informed follow-up prompts", () => {
+  const prompt = buildPrompt("document_analysis", {
+    document_title: "Example",
+    text: "A report argues demand growth will accelerate after a product launch."
+  });
+  assert.match(prompt, /Use web search to strengthen Follow-up Questions only/);
+  assert.match(prompt, /thought experiments/);
+  assert.doesNotMatch(prompt, /\*\*/);
 });
 
 test("current process is not treated as duplicate runner", () => {

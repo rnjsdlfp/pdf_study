@@ -1,4 +1,4 @@
-const PROMPT_VERSION = "2026-07-03-plain-output-specialized-terms";
+const PROMPT_VERSION = "2026-07-03-manual-prompts-web-followups";
 const SCHEMA_VERSION = "3";
 
 const JOB_TYPES = Object.freeze({

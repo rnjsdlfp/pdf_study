@@ -3,15 +3,16 @@ const state = {
   currentDocument: null,
   pages: [],
   currentPage: 1,
-  selectedText: "",
-  selectedRange: null,
-  dragSelectionStart: null,
   zoom: 1,
   showKoreanSidebar: false,
   analysisTab: "analysis",
   analysis: [],
   analysisJobs: new Map(),
-  selectionJobs: [],
+  manualJobs: {
+    explain: null,
+    fact_check: null
+  },
+  manualJobTypes: new Map(),
   eventSources: new Map()
 };
 
@@ -24,13 +25,12 @@ const API_DISCOVERY_URL = normalizeApiBase(window.CODEX_READER_CONFIG?.discovery
 const APP_API_BASE_STORAGE_KEY = window.CODEX_READER_CONFIG?.apiBaseStorageKey || "codexReaderApiBaseV2";
 const FORCE_API_DISCOVERY = Boolean(window.CODEX_READER_CONFIG?.forceDiscovery);
 const PREFER_SAME_ORIGIN_API = Boolean(window.CODEX_READER_CONFIG?.preferSameOriginApi);
-const APP_BUILD_VERSION = "20260703-selection-drag";
+const APP_BUILD_VERSION = "20260703-manual-prompts";
 let discoveryCheckedAt = 0;
 let discoveryPromise = null;
 let discoveryForcedOnce = false;
 let discoveredDirectApiBase = "";
 let statusErrorShown = false;
-let selectionTimer = null;
 
 const els = {
   documentTitle: document.getElementById("documentTitle"),
@@ -55,15 +55,16 @@ const els = {
   pdfPreview: document.getElementById("pdfPreview"),
   viewerGrid: document.querySelector(".viewer-grid"),
   readerSurface: document.getElementById("readerSurface"),
-  selectionPopup: document.getElementById("selectionPopup"),
-  explainButton: document.getElementById("explainButton"),
-  factCheckButton: document.getElementById("factCheckButton"),
   translateButton: document.getElementById("translateButton"),
   summarySection: document.getElementById("summarySection"),
-  termsSection: document.getElementById("termsSection"),
   translationSection: document.getElementById("translationSection"),
   questionsSection: document.getElementById("questionsSection"),
-  selectionJobsSection: document.getElementById("selectionJobsSection"),
+  manualExplainInput: document.getElementById("manualExplainInput"),
+  manualExplainButton: document.getElementById("manualExplainButton"),
+  manualExplainOutput: document.getElementById("manualExplainOutput"),
+  manualFactCheckInput: document.getElementById("manualFactCheckInput"),
+  manualFactCheckButton: document.getElementById("manualFactCheckButton"),
+  manualFactCheckOutput: document.getElementById("manualFactCheckOutput"),
   analysisTabButton: document.getElementById("analysisTabButton"),
   translationTabButton: document.getElementById("translationTabButton"),
   analysisContent: document.getElementById("analysisContent"),
@@ -86,6 +87,7 @@ function init() {
   loadDocuments({ silentNetworkError: true });
   setInterval(pollStatus, 5000);
   setInterval(renderAnalysisProgress, 3000);
+  setInterval(syncActiveJobs, 5000);
 }
 
 function bindEvents() {
@@ -141,20 +143,10 @@ function bindEvents() {
   els.zoomOutButton.addEventListener("click", () => setZoom(state.zoom - 0.08));
   els.zoomInButton.addEventListener("click", () => setZoom(state.zoom + 0.08));
 
-  els.readerSurface.addEventListener("mousedown", rememberSelectionStart);
-  els.readerSurface.addEventListener("pointerdown", rememberSelectionStart);
-  els.readerSurface.addEventListener("mouseup", completePointerSelection);
-  els.readerSurface.addEventListener("pointerup", completePointerSelection);
-  els.readerSurface.addEventListener("keyup", scheduleSelectionPopup);
-  document.addEventListener("selectionchange", scheduleSelectionPopup);
-  document.addEventListener("mousedown", (event) => {
-    if (!els.selectionPopup.contains(event.target)) {
-      hideSelectionPopup();
-    }
-  });
-
-  els.explainButton.addEventListener("click", () => createSelectionJob("explain"));
-  els.factCheckButton.addEventListener("click", () => createSelectionJob("fact_check"));
+  els.manualExplainInput.addEventListener("input", renderManualTools);
+  els.manualFactCheckInput.addEventListener("input", renderManualTools);
+  els.manualExplainButton.addEventListener("click", () => createManualJob("explain"));
+  els.manualFactCheckButton.addEventListener("click", () => createManualJob("fact_check"));
   els.analysisTabButton.addEventListener("click", () => setAnalysisTab("analysis"));
   els.translationTabButton.addEventListener("click", () => setAnalysisTab("translation"));
   els.translateButton.addEventListener("click", () => {
@@ -430,6 +422,7 @@ async function selectDocument(documentId) {
   state.currentPage = 1;
   state.showKoreanSidebar = false;
   state.analysisTab = "analysis";
+  resetManualJobs();
   els.documentTitle.textContent = state.currentDocument.title;
   els.analyzePageButton.disabled = false;
   els.analyzeDocumentButton.disabled = false;
@@ -453,7 +446,7 @@ async function deleteDocument(documentId, title, event) {
       state.currentPage = 1;
       state.analysis = [];
       state.analysisJobs = new Map();
-      state.selectionJobs = [];
+      resetManualJobs();
       els.documentTitle.textContent = "No document selected";
     }
     await loadDocuments();
@@ -541,12 +534,7 @@ function renderReader() {
     els.viewerGrid.classList.add("pdf-mode");
     els.pdfPreview.classList.add("active");
     els.pdfPreview.src = `${apiUrl(`/api/documents/${doc.id}/file`)}#page=${state.currentPage}`;
-    const text = page?.text || doc.status_message || "No extracted text available.";
-    const highlighted = highlight(escapeHtml(cleanDisplayText(text)), escapeHtml(els.searchInput.value.trim()));
-    els.readerSurface.innerHTML = `
-      <div class="page-label">PDF text - page ${state.currentPage}</div>
-      <div class="page-text" data-page="${state.currentPage}">${highlighted}</div>
-    `;
+    els.readerSurface.innerHTML = "";
     return;
   } else {
     els.viewerGrid.classList.remove("pdf-mode");
@@ -589,153 +577,53 @@ async function createAnalysisJob(scope) {
   }
 }
 
-function scheduleSelectionPopup() {
-  window.clearTimeout(selectionTimer);
-  selectionTimer = window.setTimeout(handleSelection, 80);
+function resetManualJobs() {
+  state.manualJobs = {
+    explain: null,
+    fact_check: null
+  };
+  state.manualJobTypes = new Map();
 }
 
-function rememberSelectionStart(event) {
-  if (!eventPageText(event)) {
-    state.dragSelectionStart = null;
-    return;
-  }
-  state.dragSelectionStart = selectionPointFromEvent(event);
-}
-
-function completePointerSelection(event) {
-  restorePointerSelection(event);
-  scheduleSelectionPopup();
-}
-
-function restorePointerSelection(event) {
-  const currentText = window.getSelection()?.toString()?.replace(/\s+/g, " ").trim() || "";
-  if (currentText.length >= 8 || !state.dragSelectionStart || !eventPageText(event)) {
-    state.dragSelectionStart = null;
-    return;
-  }
-  const end = selectionPointFromEvent(event);
-  const start = state.dragSelectionStart;
-  state.dragSelectionStart = null;
-  if (!start || !end || (start.node === end.node && start.offset === end.offset)) {
+async function createManualJob(type) {
+  if (!state.currentDocument) {
     return;
   }
 
-  const first = isSelectionPointBefore(start, end) ? start : end;
-  const second = first === start ? end : start;
-  const range = document.createRange();
-  range.setStart(first.node, first.offset);
-  range.setEnd(second.node, second.offset);
-  if (range.toString().replace(/\s+/g, " ").trim().length < 8) {
-    return;
-  }
-  const selection = window.getSelection();
-  selection.removeAllRanges();
-  selection.addRange(range);
-}
-
-function selectionPointFromEvent(event) {
-  if (document.caretRangeFromPoint) {
-    const range = document.caretRangeFromPoint(event.clientX, event.clientY);
-    if (range && els.readerSurface.contains(range.startContainer)) {
-      return { node: range.startContainer, offset: range.startOffset };
-    }
-  }
-  if (document.caretPositionFromPoint) {
-    const position = document.caretPositionFromPoint(event.clientX, event.clientY);
-    if (position && els.readerSurface.contains(position.offsetNode)) {
-      return { node: position.offsetNode, offset: position.offset };
-    }
-  }
-  return null;
-}
-
-function eventPageText(event) {
-  if (event.target instanceof Element) {
-    return event.target.closest(".page-text");
-  }
-  return event.target?.parentElement?.closest(".page-text") || null;
-}
-
-function isSelectionPointBefore(a, b) {
-  if (a.node === b.node) {
-    return a.offset <= b.offset;
-  }
-  return Boolean(a.node.compareDocumentPosition(b.node) & Node.DOCUMENT_POSITION_FOLLOWING);
-}
-
-function handleSelection() {
-  const selection = window.getSelection();
-  const text = selection ? selection.toString().replace(/\s+/g, " ").trim() : "";
-  if (!selection || text.length < 8 || !isReaderSelection(selection)) {
+  const input = type === "fact_check" ? els.manualFactCheckInput : els.manualExplainInput;
+  const text = input.value.replace(/\s+/g, " ").trim();
+  if (text.length < 8) {
+    toast(type === "fact_check" ? "Enter a fact-check target first." : "Enter an explain target first.");
+    input.focus();
     return;
   }
 
-  const range = selection.getRangeAt(0);
-  const rect = selectionRect(range);
-  if (!rect) {
-    return;
-  }
-  state.selectedText = text.slice(0, 4000);
-  state.selectedRange = range.cloneRange();
-  const estimatedWidth = window.innerWidth < 520 ? window.innerWidth - 24 : 310;
-  const top = Math.max(72, rect.top - 48);
-  const left = Math.min(window.innerWidth - estimatedWidth - 12, Math.max(12, rect.left));
-  els.selectionPopup.style.top = `${top}px`;
-  els.selectionPopup.style.left = `${left}px`;
-  els.selectionPopup.hidden = false;
-}
-
-function isReaderSelection(selection) {
-  const anchorInReader = selection.anchorNode && els.readerSurface.contains(selection.anchorNode);
-  const focusInReader = selection.focusNode && els.readerSurface.contains(selection.focusNode);
-  if (anchorInReader || focusInReader) {
-    return true;
-  }
-  if (selection.rangeCount === 0) {
-    return false;
-  }
-  return els.readerSurface.contains(selection.getRangeAt(0).commonAncestorContainer);
-}
-
-function selectionRect(range) {
-  const rects = [...range.getClientRects()].filter((rect) => rect.width > 0 && rect.height > 0);
-  if (rects.length > 0) {
-    return rects[0];
-  }
-  const rect = range.getBoundingClientRect();
-  return rect.width > 0 && rect.height > 0 ? rect : null;
-}
-
-function hideSelectionPopup() {
-  els.selectionPopup.hidden = true;
-}
-
-async function createSelectionJob(type) {
-  if (!state.currentDocument || !state.selectedText) {
-    return;
-  }
   try {
     const page = state.pages.find((item) => item.page_number === state.currentPage);
-    const surroundingText = surrounding(page?.text || "", state.selectedText);
+    const surroundingText = surrounding(page?.text || documentText(), text);
     const selectionPayload = await api("/api/selections", {
       method: "POST",
       body: JSON.stringify({
         document_id: state.currentDocument.id,
         page_number: state.currentPage,
-        selection_text: state.selectedText,
+        selection_text: text,
         surrounding_text: surroundingText,
         rects: []
       })
     });
     const jobPayload = await api(`/api/selections/${selectionPayload.selection.id}/jobs`, {
       method: "POST",
-      body: JSON.stringify({ type })
+      body: JSON.stringify({ type, rerun: true })
     });
-    hideSelectionPopup();
-    window.getSelection()?.removeAllRanges();
-    toast(type === "fact_check" ? "Fact-check queued." : "Explain queued.");
+    const job = withParsedClientJob({
+      ...jobPayload.job,
+      selection: selectionPayload.selection
+    });
+    state.manualJobs[type] = job;
+    state.manualJobTypes.set(job.id, type);
+    renderManualTools();
+    toast(type === "fact_check" ? "Fact-check queued with Codex CLI." : "Explain queued with Codex CLI.");
     watchJob(jobPayload.job.id);
-    await refreshPanels();
   } catch (error) {
     toast(error.message);
   }
@@ -749,27 +637,38 @@ function watchJob(jobId) {
   state.eventSources.set(jobId, source);
   source.addEventListener("job", async (event) => {
     const payload = JSON.parse(event.data);
-    if (payload.job && !payload.job.selection_id) {
-      state.analysisJobs.set(payload.job.id, payload.job);
+    const job = payload.job ? withParsedClientJob(payload.job) : null;
+    const manualType = job ? state.manualJobTypes.get(job.id) : "";
+    if (job && manualType) {
+      state.manualJobs[manualType] = {
+        ...(state.manualJobs[manualType] || {}),
+        ...job
+      };
+      renderManualTools();
+    } else if (job && !job.selection_id) {
+      state.analysisJobs.set(job.id, job);
       renderAnalysisPanel();
     }
-    if (payload.job && ["done", "failed", "failed_schema", "cancelled"].includes(payload.job.status)) {
+    if (job && isTerminalStatus(job.status)) {
       source.close();
       state.eventSources.delete(jobId);
-      await refreshPanels();
-    } else if (payload.job?.selection_id) {
-      await refreshSelectionJobs();
+      if (manualType) {
+        await refreshManualJob(job.id, manualType);
+      } else {
+        await refreshPanels();
+      }
     }
     pollStatus();
   });
   source.onerror = () => {
     source.close();
     state.eventSources.delete(jobId);
+    syncActiveJobs();
   };
 }
 
 async function refreshPanels() {
-  await Promise.all([refreshAnalysis(), refreshSelectionJobs()]);
+  await refreshAnalysis();
   renderAnalysisPanel();
 }
 
@@ -786,19 +685,39 @@ async function refreshAnalysis() {
   }
 }
 
-async function refreshSelectionJobs() {
+async function refreshManualJob(jobId, manualType) {
+  const payload = await api(`/api/jobs/${jobId}`);
+  state.manualJobs[manualType] = withParsedClientJob(payload.job);
+  renderManualTools();
+}
+
+async function syncActiveJobs() {
   if (!state.currentDocument) {
-    state.selectionJobs = [];
     return;
   }
-  const payload = await api(`/api/documents/${state.currentDocument.id}/selection-jobs`);
-  state.selectionJobs = payload.jobs || [];
-  renderSelectionJobs();
+  const activeAnalysis = [...state.analysisJobs.values()].some((job) => !job.selection_id && !isTerminalStatus(job.status));
+  const activeManualJobs = Object.entries(state.manualJobs).filter(([, job]) => job && !isTerminalStatus(job.status));
+  if (!activeAnalysis && activeManualJobs.length === 0) {
+    return;
+  }
+
+  try {
+    if (activeAnalysis) {
+      await refreshAnalysis();
+      renderAnalysisPanel();
+    }
+    for (const [manualType, job] of activeManualJobs) {
+      await refreshManualJob(job.id, manualType);
+    }
+  } catch {
+    // Status polling already surfaces connection issues; keep progress UI from throwing.
+  }
 }
 
 function renderAnalysisPanel() {
   renderAnalysisTabs();
   renderAnalysisProgress();
+  renderManualTools();
 
   const latestJob = state.analysis[0] || null;
   const latest = latestJob?.result || null;
@@ -806,20 +725,6 @@ function renderAnalysisPanel() {
   els.summarySection.textContent = cleanDisplayText(useKorean
     ? latest?.summary_ko || latest?.summary_original || latest?.summary || state.currentDocument?.status_message || "Ready to analyze"
     : latest?.summary_original || latest?.summary || latest?.summary_ko || state.currentDocument?.status_message || "Ready to analyze");
-
-  els.termsSection.innerHTML = "";
-  for (const term of latest?.terms || []) {
-    const item = document.createElement("div");
-    item.className = "term-item";
-    const definition = useKorean
-      ? term.definition_ko || term.definition_original || term.definition || ""
-      : term.definition_original || term.definition || term.definition_ko || "";
-    item.innerHTML = `<strong>${escapeHtml(cleanDisplayText(term.term || "Term"))}</strong>${escapeHtml(cleanDisplayText(definition))}`;
-    els.termsSection.appendChild(item);
-  }
-  if (!latest?.terms?.length) {
-    els.termsSection.textContent = latest ? "No terms returned." : "Run Analyze Document to generate terms.";
-  }
 
   els.questionsSection.innerHTML = "";
   const questions = useKorean
@@ -839,7 +744,6 @@ function renderAnalysisPanel() {
   els.translateButton.disabled = !latest;
   els.translateButton.textContent = state.showKoreanSidebar ? "Show Original" : "Translate Korean";
   els.translationSection.textContent = cleanDisplayText(fullTextTranslation());
-  renderSelectionJobs();
 }
 
 function renderAnalysisTabs() {
@@ -897,7 +801,9 @@ function estimateClientProgress(job) {
     return { percent: 100, label: "Failed" };
   }
   if (job.status === "queued") {
-    return { percent: 8, label: "Queued" };
+    const createdAt = Date.parse(job.created_at || "");
+    const elapsedSeconds = Number.isFinite(createdAt) ? Math.max(0, Math.round((Date.now() - createdAt) / 1000)) : 0;
+    return { percent: Math.min(18, 8 + Math.floor(elapsedSeconds / 6)), label: "Queued" };
   }
   if (job.status === "running") {
     const startedAt = Date.parse(job.heartbeat_at || job.updated_at || job.created_at || "");
@@ -938,35 +844,92 @@ function parseJson(value) {
   }
 }
 
-function renderSelectionJobs() {
-  els.selectionJobsSection.innerHTML = "";
-  if (state.selectionJobs.length === 0) {
-    els.selectionJobsSection.textContent = "No selection jobs";
-    return;
+function withParsedClientJob(job) {
+  if (!job) {
+    return null;
   }
-
-  for (const job of state.selectionJobs) {
-    const result = job.result || {};
-    const item = document.createElement("div");
-    item.className = "job-item";
-    item.innerHTML = `
-      <span class="job-status ${escapeHtml(job.status)}">${escapeHtml(job.status)}</span>
-      <strong>${escapeHtml(job.type.replaceAll("_", " "))}</strong>
-      <div>${escapeHtml(cleanDisplayText(job.selection?.selection_text || "")).slice(0, 180)}</div>
-      ${renderJobResult(job.type, result)}
-    `;
-    els.selectionJobsSection.appendChild(item);
-  }
+  return {
+    ...job,
+    payload: job.payload || parseJson(job.payload_json) || {},
+    result: job.result || parseJson(job.result_json) || {}
+  };
 }
 
-function renderJobResult(type, result) {
-  if (!result || Object.keys(result).length === 0) {
+function isTerminalStatus(status) {
+  return ["done", "failed", "failed_schema", "cancelled"].includes(status);
+}
+
+function documentText() {
+  return state.pages.map((page) => page.text || "").join("\n\n");
+}
+
+function renderManualTools() {
+  if (!els.manualExplainButton || !els.manualFactCheckButton) {
+    return;
+  }
+  const hasDocument = Boolean(state.currentDocument);
+  els.manualExplainButton.disabled = !hasDocument || els.manualExplainInput.value.trim().length < 8;
+  els.manualFactCheckButton.disabled = !hasDocument || els.manualFactCheckInput.value.trim().length < 8;
+  els.manualExplainOutput.innerHTML = renderManualJobResult("explain", state.manualJobs.explain);
+  els.manualFactCheckOutput.innerHTML = renderManualJobResult("fact_check", state.manualJobs.fact_check);
+}
+
+function renderManualJobResult(type, job) {
+  if (!job) {
+    return `<div class="manual-placeholder">${type === "fact_check" ? "No fact-check result yet." : "No explanation yet."}</div>`;
+  }
+  const result = job.result || {};
+  const status = escapeHtml(job.status || "queued");
+  if (!isTerminalStatus(job.status)) {
+    const progress = job.progress || estimateClientProgress(job);
+    return `
+      <span class="job-status ${status}">${status}</span>
+      <div>${escapeHtml(progress.label || "Working")} - ${Math.max(0, Math.min(100, Number(progress.percent || 0)))}%</div>
+    `;
+  }
+  if (job.error) {
+    return `<span class="job-status ${status}">${status}</span><div>${escapeHtml(job.error)}</div>`;
+  }
+  if (type === "fact_check") {
+    return `
+      <span class="job-status ${status}">${status}</span>
+      <strong>${escapeHtml(cleanDisplayText(result.verdict || "unclear"))}</strong>
+      <div>${escapeHtml(cleanDisplayText(result.explanation_ko || ""))}</div>
+      ${renderManualSources(result.sources || [])}
+    `;
+  }
+  const text = state.showKoreanSidebar
+    ? result.explanation_ko || result.explanation_original || ""
+    : result.explanation_original || result.explanation_ko || "";
+  return `
+    <span class="job-status ${status}">${status}</span>
+    <div>${escapeHtml(cleanDisplayText(text || "No explanation returned."))}</div>
+  `;
+}
+
+function renderManualSources(sources) {
+  if (!sources.length) {
     return "";
   }
-  if (type === "selection_fact_check") {
-    return `<div><strong>${escapeHtml(cleanDisplayText(result.verdict || "unclear"))}</strong>${escapeHtml(cleanDisplayText(result.explanation_ko || ""))}</div>`;
-  }
-  return `<div>${escapeHtml(cleanDisplayText(result.explanation_original || result.explanation_ko || result.summary_original || result.summary_ko || ""))}</div>`;
+  const items = sources
+    .slice(0, 4)
+    .map((source) => {
+      const title = cleanDisplayText(source.title || source.url || "Source");
+      const url = source.url || "";
+      const publisher = cleanDisplayText(source.publisher || "");
+      return `
+        <li>
+          ${
+            url
+              ? `<a href="${escapeAttribute(url)}" target="_blank" rel="noreferrer">${escapeHtml(title)}</a>`
+              : escapeHtml(title)
+          }
+          ${publisher ? `<span>${escapeHtml(publisher)}</span>` : ""}
+        </li>
+      `;
+    })
+    .join("");
+  return `<ol class="manual-source-list">${items}</ol>`;
 }
 
 function highlight(html, query) {
