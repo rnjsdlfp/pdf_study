@@ -33,7 +33,7 @@ class CodexAdapter {
       codex_command: cli.ok ? codexCommand : "",
       codex_version: normalizeWhitespace(cli.stdout || cli.stderr || ""),
       codex_login_ok: cli.ok,
-      codex_web_search_ok: cli.ok && /--search/.test(webSearch.stdout || ""),
+      codex_web_search_ok: cli.ok && /--search/.test(`${webSearch.stdout || ""}\n${webSearch.stderr || ""}`),
       codex_mode: this.config.codexMode,
       last_checked_at: new Date().toISOString()
     };
@@ -68,8 +68,14 @@ class CodexAdapter {
       return fallbackResult(jobType, context, "Codex CLI was not found; local fallback was used.");
     }
 
-    const prompt = buildPrompt(jobType, context);
-    const args = buildCodexArgs(jobType, this.config);
+    const prompt = buildPrompt(jobType, {
+      ...context,
+      codex_web_search_ok: status.codex_web_search_ok
+    });
+    const args = buildCodexArgs(jobType, {
+      ...this.config,
+      codexSearchSupported: status.codex_web_search_ok
+    });
 
     try {
       const codexCommand = await this.resolveCodexCommand();
@@ -174,15 +180,19 @@ function buildCodexArgs(jobType, config = {}) {
   if (config.codexModel) {
     args.push("--model", String(config.codexModel));
   }
-  if (
-    jobType === JOB_TYPES.PAGE_ANALYSIS ||
-    jobType === JOB_TYPES.DOCUMENT_ANALYSIS ||
-    jobType === JOB_TYPES.SELECTION_FACT_CHECK ||
-    jobType === JOB_TYPES.FOLLOW_UP_ANSWER
-  ) {
+  if (config.codexSearchSupported === true && shouldUseCodexSearch(jobType)) {
     args.push("--search");
   }
   return args;
+}
+
+function shouldUseCodexSearch(jobType) {
+  return [
+    JOB_TYPES.PAGE_ANALYSIS,
+    JOB_TYPES.DOCUMENT_ANALYSIS,
+    JOB_TYPES.SELECTION_FACT_CHECK,
+    JOB_TYPES.FOLLOW_UP_ANSWER
+  ].includes(jobType);
 }
 
 async function commandOk(command, args, timeout) {
@@ -316,6 +326,7 @@ function buildPrompt(jobType, context) {
   const outputLanguage = normalizeOutputLanguage(context.output_language);
   const summaryContext = truncate(context.summary_context || "", 3000) || "No analyzed summary is available yet.";
   const outputStyle = outputStyleInstruction(outputLanguage);
+  const webSearchAvailable = context.codex_web_search_ok !== false;
 
   if (jobType === JOB_TYPES.SELECTION_FACT_CHECK) {
     return [
@@ -326,7 +337,9 @@ function buildPrompt(jobType, context) {
       `Output language: ${outputLanguage}. Write every human-readable string value in ${outputLanguage}, including explanation_ko and caveats, even when a field name contains a language suffix.`,
       outputStyle,
       "Treat the user-provided text as the exact claim or claim bundle to verify. Use the summary and document context only to understand wording, entities, dates, and units.",
-      "Use web search. Cite external sources. If the claim cannot be checked, use not_checkable. Use plain text only. Do not use Markdown tables, headings, bold markers, or double-asterisk emphasis markers anywhere in string values.",
+      webSearchAvailable
+        ? "Use web search. Cite external sources. If the claim cannot be checked, use not_checkable. Use plain text only. Do not use Markdown tables, headings, bold markers, or double-asterisk emphasis markers anywhere in string values."
+        : "External web search is unavailable in this Codex CLI environment. Verify from the document context only, use not_checkable when needed, leave sources empty when no external source is available, and mention this limitation in caveats. Use plain text only. Do not use Markdown tables, headings, bold markers, or double-asterisk emphasis markers anywhere in string values.",
       `Document title: ${context.document_title || "Untitled"}`,
       `Automatically extracted summary for context:\n${summaryContext}`,
       `Claim or manual fact-check target:\n${text}`,
@@ -358,7 +371,9 @@ function buildPrompt(jobType, context) {
         '","relevance":"high|medium|low"}],"caveats":["string"]}',
       `Output language: ${outputLanguage}. Write every human-readable string value in ${outputLanguage}.`,
       outputStyle,
-      "Use web search and the full extracted document text. Answer the clicked follow-up question directly, then connect the answer back to the document's thesis, evidence, and uncertainties.",
+      webSearchAvailable
+        ? "Use web search and the full extracted document text. Answer the clicked follow-up question directly, then connect the answer back to the document's thesis, evidence, and uncertainties."
+        : "External web search is unavailable in this Codex CLI environment. Use the full extracted document text only, answer the clicked follow-up question directly, and mention the lack of external web search in caveats.",
       "Use the full extracted text as context and background knowledge, not as a quote dump. Prefer concise reasoning, useful caveats, and external sources that materially improve the answer.",
       "Use plain text only. Do not use Markdown tables, headings, bold markers, or double-asterisk emphasis markers anywhere in string values.",
       `Document title: ${context.document_title || "Untitled"}`,
@@ -376,7 +391,9 @@ function buildPrompt(jobType, context) {
     outputStyle,
     "Summary requirement: write the Summary field as 5 to 8 sentences. Keep it concise, but include the central thesis, key evidence, important numbers or dates, assumptions, and main caveats.",
     "translation_ko must be the same value as full_text_translation_ko for backward compatibility. full_text_translation_ko should translate the provided extracted body text, preserving page cues and important numbers. Keep Terms concise and useful for research reading.",
-    "Use web search to strengthen Follow-up Questions only: ground the questions in the extracted text, current public context, and plausible counter-evidence. Do not turn follow-up questions into a source list.",
+    webSearchAvailable
+      ? "Use web search to strengthen Follow-up Questions only: ground the questions in the extracted text, current public context, and plausible counter-evidence. Do not turn follow-up questions into a source list."
+      : "External web search is unavailable in this Codex CLI environment. Generate Follow-up Questions from the extracted text only, and focus on internal logic, contradictions, assumptions, and explanation clarity.",
     `Output language for Follow-up Questions: ${outputLanguage}. Write follow_up_questions_original, follow_up_questions_ko, and follow_up_questions in ${outputLanguage}.`,
     followUpQuestionsInstruction(outputLanguage, jobType),
     "Use plain text only. Do not use Markdown tables, headings, bold markers, or double-asterisk emphasis markers anywhere in string values.",

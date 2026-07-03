@@ -157,7 +157,8 @@ test("Codex command lookup includes explicit and common paths", () => {
 test("Codex execution args match automation defaults", () => {
   const args = buildCodexArgs("document_analysis", {
     codexModel: "gpt-5.5",
-    codexSkipGitRepoCheck: true
+    codexSkipGitRepoCheck: true,
+    codexSearchSupported: true
   });
   assert.deepEqual(args.slice(0, 8), [
     "exec",
@@ -170,6 +171,12 @@ test("Codex execution args match automation defaults", () => {
     "gpt-5.5"
   ]);
   assert.equal(args.includes("--search"), true);
+  const withoutSearch = buildCodexArgs("document_analysis", {
+    codexModel: "gpt-5.5",
+    codexSkipGitRepoCheck: true,
+    codexSearchSupported: false
+  });
+  assert.equal(withoutSearch.includes("--search"), false);
   assert.equal(firstCommandWord("codex exec --skip-git-repo-check"), "codex");
 });
 
@@ -208,7 +215,7 @@ test("manual prompts include summary context and selected output language", () =
 });
 
 test("follow-up answer prompt uses search, full text, and language", () => {
-  const args = buildCodexArgs("follow_up_answer", {});
+  const args = buildCodexArgs("follow_up_answer", { codexSearchSupported: true });
   const prompt = buildPrompt("follow_up_answer", {
     document_title: "Example",
     output_language: "English",
@@ -221,6 +228,17 @@ test("follow-up answer prompt uses search, full text, and language", () => {
   assert.match(prompt, /itemized phrases/);
   assert.match(prompt, /Full extracted document text/);
   assert.match(prompt, /Use web search/);
+});
+
+test("prompts degrade when Codex CLI search flag is unavailable", () => {
+  const args = buildCodexArgs("document_analysis", { codexSearchSupported: false });
+  const prompt = buildPrompt("document_analysis", {
+    document_title: "Example",
+    codex_web_search_ok: false,
+    text: "A report argues demand growth will accelerate after a product launch."
+  });
+  assert.equal(args.includes("--search"), false);
+  assert.match(prompt, /External web search is unavailable/);
 });
 
 test("default follow-up questions match requested baseline", () => {
