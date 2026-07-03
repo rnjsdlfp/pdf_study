@@ -1,0 +1,19 @@
+{
+	"$schema": "../../../node_modules/wrangler/config-schema.json",
+	"name": "pdf-study-discovery",
+	"main": "src/index.js",
+	"compatibility_date": "2026-07-03",
+	"workers_dev": true,
+	"observability": {
+		"enabled": true
+	},
+	"vars": {
+		"MAX_TUNNEL_AGE_SECONDS": "86400"
+	},
+	"kv_namespaces": [
+		{
+			"binding": "TUNNEL_KV",
+			"id": "0d5ea405c0494a05a7eaa7a500623e27"
+		}
+	]
+}

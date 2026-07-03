@@ -6,6 +6,7 @@ PORT="${CODEX_READER_PORT:-3001}"
 HOST="${CODEX_READER_HOST:-127.0.0.1}"
 LOCAL_URL="http://${HOST}:${PORT}"
 PAGES_URL="${CODEX_READER_PAGES_URL:-https://pdf-study.pages.dev}"
+DISCOVERY_URL="${CODEX_READER_DISCOVERY_URL:-https://pdf-study-discovery.jirehkwon.workers.dev}"
 TUNNEL_MODE="${CODEX_READER_TUNNEL_MODE:-quick}"
 TUNNEL_ID="${CODEX_READER_TUNNEL_ID:-}"
 TUNNEL_URL="${CODEX_READER_TUNNEL_URL:-}"
@@ -64,6 +65,21 @@ open_pages() {
 
 detect_quick_tunnel_url() {
   grep -Eo 'https://[-a-zA-Z0-9.]+\.trycloudflare\.com' "$TUNNEL_LOG" 2>/dev/null | tail -n 1 || true
+}
+
+register_tunnel_url() {
+  local url="$1"
+  if [ -z "$DISCOVERY_URL" ] || [ -z "$url" ]; then
+    return 0
+  fi
+
+  local payload
+  payload="$(node -e 'console.log(JSON.stringify({ apiBase: process.argv[1] }))' "$url")"
+  if curl -fsS -X POST -H "Content-Type: application/json" --data "$payload" "$DISCOVERY_URL/register" >> "$TUNNEL_LOG" 2>&1; then
+    printf '\n[%s] Registered tunnel with discovery service: %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$DISCOVERY_URL" >> "$TUNNEL_LOG"
+  else
+    printf '\n[%s] Discovery registration failed: %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$DISCOVERY_URL" >> "$TUNNEL_LOG"
+  fi
 }
 
 if [ ! -d "$ROOT_DIR/apps/mac-runner" ]; then
@@ -125,6 +141,7 @@ fi
 
 if [ -n "$TUNNEL_URL" ] && curl -fsS "$TUNNEL_URL/health" >/dev/null 2>&1; then
   write_status true 1
+  register_tunnel_url "$TUNNEL_URL"
   open_pages "$TUNNEL_URL"
   notify "Codex Reader Tunnel" "Tunnel is already online at $TUNNEL_URL"
   exit 0
@@ -135,6 +152,7 @@ fi
   printf '\n[%s] Starting Cloudflare Tunnel mode=%s -> %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$TUNNEL_MODE" "$LOCAL_URL"
   printf '[%s] PATH: %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$PATH"
   printf '[%s] npm cache: %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$NPM_CACHE_DIR"
+  printf '[%s] Discovery URL: %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$DISCOVERY_URL"
   printf '[%s] Codex command: %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "${CODEX_READER_CODEX_COMMAND:-not found in launcher PATH}"
 } >> "$TUNNEL_LOG"
 
@@ -175,6 +193,7 @@ for _ in $(seq 1 45); do
 
   if [ -n "$TUNNEL_URL" ] && curl -fsS "$TUNNEL_URL/health" >/dev/null 2>&1; then
     write_status true "$TUNNEL_PID" "$TUNNEL_URL"
+    register_tunnel_url "$TUNNEL_URL"
     open_pages "$TUNNEL_URL"
     notify "Codex Reader Tunnel" "Tunnel is online at $TUNNEL_URL"
     exit 0

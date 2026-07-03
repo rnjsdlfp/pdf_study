@@ -8,7 +8,7 @@ The repository uses Cloudflare Quick Tunnel by default:
 ./★CodexReader\ Tunnel.command
 ```
 
-The launcher starts the local API at `http://127.0.0.1:3001`, starts a temporary `https://*.trycloudflare.com` tunnel, waits for `/health`, then opens:
+The launcher starts the local API at `http://127.0.0.1:3001`, starts a temporary `https://*.trycloudflare.com` tunnel, waits for `/health`, registers the tunnel URL with the discovery Worker, then opens:
 
 ```text
 https://pdf-study.pages.dev/?apiBase=<temporary tunnel URL>
@@ -17,6 +17,15 @@ https://pdf-study.pages.dev/?apiBase=<temporary tunnel URL>
 This default mode does not need a custom domain or DNS record. The tunnel URL changes when the tunnel restarts.
 
 Quick Tunnel mode also does not require `npx wrangler login`. The launcher sets `NPM_CONFIG_CACHE` to `~/Library/Application Support/CodexReader/npm-cache` so root-owned files in `~/.npm` do not block the app.
+
+## Discovery Worker
+
+```text
+Worker: https://pdf-study-discovery.jirehkwon.workers.dev
+KV namespace: TUNNEL_KV
+```
+
+The Worker stores the latest validated Quick Tunnel URL. The frontend calls `/current` before trying the MacBook API, so other devices can open `https://pdf-study.pages.dev/` directly after the MacBook Tunnel launcher is running.
 
 ## Optional: Named Tunnel
 

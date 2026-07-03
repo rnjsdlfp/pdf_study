@@ -7,7 +7,8 @@
     "start": "node apps/mac-runner/CodexReaderRunner.js",
     "server": "node apps/server/src/main.js",
     "test": "node --test",
-    "build": "node scripts/build-check.js"
+    "build": "node scripts/build-check.js",
+    "deploy:discovery": "wrangler deploy --config infra/cloudflare/discovery-worker/wrangler.jsonc"
   },
   "engines": {
     "node": ">=22"

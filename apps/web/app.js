@@ -17,6 +17,9 @@ const API_BASE_CANDIDATES = uniqueApiBases([
   activeApiBase,
   ...(window.CODEX_READER_CONFIG?.apiBaseCandidates || [])
 ]);
+const API_DISCOVERY_URL = normalizeApiBase(window.CODEX_READER_CONFIG?.discoveryUrl || "");
+let discoveryCheckedAt = 0;
+let discoveryPromise = null;
 
 const els = {
   documentTitle: document.getElementById("documentTitle"),
@@ -121,7 +124,7 @@ async function api(path, options = {}) {
   const { uploadRequest = false, ...fetchOptions } = options;
   let lastNetworkError = null;
 
-  for (const candidate of apiBaseCandidates()) {
+  for (const candidate of await apiBaseCandidates()) {
     let response;
     try {
       response = await fetch(apiUrl(path, candidate), {
@@ -203,8 +206,38 @@ function uniqueApiBases(values) {
   return result;
 }
 
-function apiBaseCandidates() {
+async function apiBaseCandidates() {
+  const discovered = await discoverApiBase();
+  if (discovered) {
+    return uniqueApiBases([discovered, activeApiBase, ...API_BASE_CANDIDATES]);
+  }
   return uniqueApiBases([activeApiBase, ...API_BASE_CANDIDATES]);
+}
+
+async function discoverApiBase() {
+  if (!API_DISCOVERY_URL || !window.location.hostname.endsWith(".pages.dev")) {
+    return "";
+  }
+
+  if (discoveryPromise && Date.now() - discoveryCheckedAt < 15000) {
+    return discoveryPromise;
+  }
+
+  discoveryCheckedAt = Date.now();
+  discoveryPromise = fetch(`${API_DISCOVERY_URL}/current`, { cache: "no-store" })
+    .then(async (response) => {
+      if (!response.ok) {
+        return "";
+      }
+      const payload = await response.json();
+      const apiBase = normalizeApiBase(payload?.ok ? payload.apiBase : "");
+      if (apiBase) {
+        localStorage.setItem("codexReaderApiBaseV2", apiBase);
+      }
+      return apiBase;
+    })
+    .catch(() => "");
+  return discoveryPromise;
 }
 
 async function pollStatus() {

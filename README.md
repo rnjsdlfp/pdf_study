@@ -37,7 +37,9 @@ For access from another device, use the Tunnel launcher:
 ★CodexReader Tunnel.command
 ```
 
-The Tunnel launcher uses Cloudflare Quick Tunnel by default. It creates a temporary `https://*.trycloudflare.com` API URL, opens Pages with that URL in `apiBase`, and does not require a custom DNS record.
+The Tunnel launcher uses Cloudflare Quick Tunnel by default. It creates a temporary `https://*.trycloudflare.com` API URL, registers it with the discovery Worker, opens Pages with that URL in `apiBase`, and does not require a custom DNS record.
+
+After the MacBook Tunnel launcher is running, other computers can open `https://pdf-study.pages.dev/` directly. The frontend asks the discovery Worker for the latest MacBook tunnel URL before it marks the MacBook offline.
 
 The launcher uses app-local caches under `~/Library/Application Support/CodexReader`, so `npx wrangler login` is not required for the default Quick Tunnel flow.
 

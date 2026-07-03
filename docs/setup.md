@@ -46,7 +46,13 @@ To force same-Mac local mode:
 https://pdf-study.pages.dev/?apiBase=http://127.0.0.1:3001
 ```
 
-For another device, such as an iPad or a different laptop, double-click `★CodexReader Tunnel.command`. It opens Pages with a temporary Cloudflare Quick Tunnel API URL.
+For another device, such as an iPad or a different laptop, double-click `★CodexReader Tunnel.command` on the MacBook first. It opens a temporary Cloudflare Quick Tunnel and registers that URL with the discovery Worker.
+
+After that, other devices can open:
+
+```text
+https://pdf-study.pages.dev/
+```
 
 The default Quick Tunnel flow does not require:
 

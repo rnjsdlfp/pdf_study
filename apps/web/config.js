@@ -1,5 +1,6 @@
 const LOCAL_MACBOOK_API_BASE = "http://127.0.0.1:3001";
 const API_BASE_STORAGE_KEY = "codexReaderApiBaseV2";
+const DISCOVERY_URL = "https://pdf-study-discovery.jirehkwon.workers.dev";
 
 function normalizeApiBase(value) {
   return String(value || "").replace(/\/$/, "");
@@ -34,5 +35,6 @@ function defaultApiBaseCandidates() {
 
 window.CODEX_READER_CONFIG = {
   apiBase: readApiBaseOverride() || defaultApiBase(),
-  apiBaseCandidates: defaultApiBaseCandidates()
+  apiBaseCandidates: defaultApiBaseCandidates(),
+  discoveryUrl: window.CODEX_READER_DISCOVERY_URL || DISCOVERY_URL
 };
