@@ -6,12 +6,25 @@ function normalizeApiBase(value) {
   return String(value || "").replace(/\/$/, "");
 }
 
+function queryFlag(name) {
+  const value = new URLSearchParams(window.location.search).get(name);
+  return value === "" || value === "1" || value === "true";
+}
+
 function readApiBaseOverride() {
   const params = new URLSearchParams(window.location.search);
+  const forceDiscovery = queryFlag("refreshDiscovery") || queryFlag("resetApiBase");
+  if (forceDiscovery) {
+    localStorage.removeItem(API_BASE_STORAGE_KEY);
+  }
+
   const fromQuery = normalizeApiBase(params.get("apiBase"));
   if (fromQuery) {
-    localStorage.setItem(API_BASE_STORAGE_KEY, fromQuery);
     return fromQuery;
+  }
+
+  if (forceDiscovery) {
+    return "";
   }
 
   const stored = normalizeApiBase(localStorage.getItem(API_BASE_STORAGE_KEY));
@@ -36,5 +49,7 @@ function defaultApiBaseCandidates() {
 window.CODEX_READER_CONFIG = {
   apiBase: readApiBaseOverride() || defaultApiBase(),
   apiBaseCandidates: defaultApiBaseCandidates(),
+  apiBaseStorageKey: API_BASE_STORAGE_KEY,
+  forceDiscovery: queryFlag("refreshDiscovery") || queryFlag("resetApiBase"),
   discoveryUrl: window.CODEX_READER_DISCOVERY_URL || DISCOVERY_URL
 };

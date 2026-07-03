@@ -22,6 +22,7 @@ NPM_CACHE_DIR="$RUNTIME_HOME/npm-cache"
 LOCAL_CURL_MAX_TIME="${CODEX_READER_LOCAL_CURL_MAX_TIME:-3}"
 PUBLIC_CURL_MAX_TIME="${CODEX_READER_PUBLIC_CURL_MAX_TIME:-8}"
 REGISTER_CURL_MAX_TIME="${CODEX_READER_REGISTER_CURL_MAX_TIME:-20}"
+OPEN_BROWSER="${CODEX_READER_OPEN_BROWSER:-true}"
 CODEX_CLI_HELPER="$ROOT_DIR/infra/macos/codex-cli.sh"
 TUNNEL_PID=""
 export npm_config_cache="$NPM_CACHE_DIR"
@@ -125,10 +126,17 @@ open_pages() {
   if [ -z "$url" ]; then
     return
   fi
-  local encoded
+  case "$OPEN_BROWSER" in
+    false|False|FALSE|0|no|No|NO)
+      log_tunnel "Browser auto-open disabled by CODEX_READER_OPEN_BROWSER=$OPEN_BROWSER"
+      return
+      ;;
+  esac
+
+  local timestamp
   local target
-  encoded="$(node -e 'console.log(encodeURIComponent(process.argv[1]))' "$url")"
-  target="${PAGES_URL}/?apiBase=${encoded}"
+  timestamp="$(date +%s)"
+  target="${PAGES_URL}/?refreshDiscovery=1&t=${timestamp}"
   log_tunnel "Opening browser: $target"
   if command -v open >/dev/null 2>&1; then
     if open "$target" >/dev/null 2>&1; then
@@ -175,6 +183,7 @@ keep_tunnel_running() {
   print_line ""
   print_line "Tunnel is online: $url"
   print_line "Keep this Terminal window open while using Codex Reader from other devices."
+  print_line "If an old browser tab still says MacBook offline, refresh it or open ${PAGES_URL}/?refreshDiscovery=1."
   print_line "Press Control-C to stop the tunnel."
   print_line ""
   trap stop_tunnel_and_exit INT TERM

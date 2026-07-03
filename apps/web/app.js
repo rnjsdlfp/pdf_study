@@ -18,8 +18,11 @@ const API_BASE_CANDIDATES = uniqueApiBases([
   ...(window.CODEX_READER_CONFIG?.apiBaseCandidates || [])
 ]);
 const API_DISCOVERY_URL = normalizeApiBase(window.CODEX_READER_CONFIG?.discoveryUrl || "");
+const API_BASE_STORAGE_KEY = window.CODEX_READER_CONFIG?.apiBaseStorageKey || "codexReaderApiBaseV2";
+const FORCE_API_DISCOVERY = Boolean(window.CODEX_READER_CONFIG?.forceDiscovery);
 let discoveryCheckedAt = 0;
 let discoveryPromise = null;
+let discoveryForcedOnce = false;
 
 const els = {
   documentTitle: document.getElementById("documentTitle"),
@@ -123,8 +126,14 @@ function bindEvents() {
 async function api(path, options = {}) {
   const { uploadRequest = false, ...fetchOptions } = options;
   let lastNetworkError = null;
+  const attempted = new Set();
 
-  for (const candidate of await apiBaseCandidates()) {
+  async function tryApiBase(candidate) {
+    if (attempted.has(candidate)) {
+      return null;
+    }
+    attempted.add(candidate);
+
     let response;
     try {
       response = await fetch(apiUrl(path, candidate), {
@@ -136,11 +145,27 @@ async function api(path, options = {}) {
       });
     } catch (error) {
       lastNetworkError = error;
-      continue;
+      forgetApiBase(candidate);
+      return null;
     }
 
-    activeApiBase = candidate;
-    return parseApiResponse(response);
+    rememberApiBase(candidate);
+    return response;
+  }
+
+  for (const candidate of await apiBaseCandidates()) {
+    const response = await tryApiBase(candidate);
+    if (response) {
+      return parseApiResponse(response);
+    }
+  }
+
+  const refreshedApiBase = await discoverApiBase({ force: true });
+  if (refreshedApiBase) {
+    const response = await tryApiBase(refreshedApiBase);
+    if (response) {
+      return parseApiResponse(response);
+    }
   }
 
   throw networkFailureError(lastNetworkError, { uploadRequest });
@@ -189,6 +214,25 @@ function apiUrl(path, base = activeApiBase) {
   return `${base}${path}`;
 }
 
+function rememberApiBase(candidate) {
+  activeApiBase = candidate;
+  if (candidate && window.location.hostname.endsWith(".pages.dev")) {
+    localStorage.setItem(API_BASE_STORAGE_KEY, candidate);
+  }
+}
+
+function forgetApiBase(candidate) {
+  if (!candidate) {
+    return;
+  }
+  if (activeApiBase === candidate) {
+    activeApiBase = "";
+  }
+  if (normalizeApiBase(localStorage.getItem(API_BASE_STORAGE_KEY)) === candidate) {
+    localStorage.removeItem(API_BASE_STORAGE_KEY);
+  }
+}
+
 function normalizeApiBase(value) {
   return String(value || "").replace(/\/$/, "");
 }
@@ -207,19 +251,22 @@ function uniqueApiBases(values) {
 }
 
 async function apiBaseCandidates() {
-  const discovered = await discoverApiBase();
+  const force = FORCE_API_DISCOVERY && !discoveryForcedOnce;
+  discoveryForcedOnce = discoveryForcedOnce || force;
+  const discovered = await discoverApiBase({ force });
   if (discovered) {
     return uniqueApiBases([discovered, activeApiBase, ...API_BASE_CANDIDATES]);
   }
   return uniqueApiBases([activeApiBase, ...API_BASE_CANDIDATES]);
 }
 
-async function discoverApiBase() {
+async function discoverApiBase(options = {}) {
+  const { force = false } = options;
   if (!API_DISCOVERY_URL || !window.location.hostname.endsWith(".pages.dev")) {
     return "";
   }
 
-  if (discoveryPromise && Date.now() - discoveryCheckedAt < 15000) {
+  if (!force && discoveryPromise && Date.now() - discoveryCheckedAt < 15000) {
     return discoveryPromise;
   }
 
@@ -232,7 +279,7 @@ async function discoverApiBase() {
       const payload = await response.json();
       const apiBase = normalizeApiBase(payload?.ok ? payload.apiBase : "");
       if (apiBase) {
-        localStorage.setItem("codexReaderApiBaseV2", apiBase);
+        localStorage.setItem(API_BASE_STORAGE_KEY, apiBase);
       }
       return apiBase;
     })
