@@ -253,17 +253,15 @@ function uniqueApiBases(values) {
 }
 
 async function apiBaseCandidates() {
+  if (PREFER_SAME_ORIGIN_API) {
+    return uniqueApiBases(["", activeApiBase, ...API_BASE_CANDIDATES]);
+  }
+
   const force = FORCE_API_DISCOVERY && !discoveryForcedOnce;
   discoveryForcedOnce = discoveryForcedOnce || force;
   const discovered = await discoverApiBase({ force });
   if (discovered) {
-    if (PREFER_SAME_ORIGIN_API) {
-      return uniqueApiBases(["", activeApiBase, discovered, discoveredDirectApiBase, ...API_BASE_CANDIDATES]);
-    }
     return uniqueApiBases([discovered, activeApiBase, discoveredDirectApiBase, ...API_BASE_CANDIDATES]);
-  }
-  if (PREFER_SAME_ORIGIN_API) {
-    return uniqueApiBases(["", activeApiBase, ...API_BASE_CANDIDATES]);
   }
   return uniqueApiBases([activeApiBase, ...API_BASE_CANDIDATES]);
 }
