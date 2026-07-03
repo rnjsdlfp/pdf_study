@@ -314,13 +314,15 @@ function createApp({ config, paths, store, eventHub, codexAdapter, worker, logge
 
   async function buildSystemStatus() {
     const codex = await codexAdapter.getStatus();
+    const tunnel = readTunnelStatus(paths);
     return {
       codex_cli_available: codex.codex_cli_available,
       codex_login_ok: codex.codex_login_ok,
       codex_web_search_ok: codex.codex_web_search_ok,
       codex_mode: codex.codex_mode,
       codex_version: codex.codex_version,
-      cloudflare_tunnel_ok: false,
+      cloudflare_tunnel_ok: tunnel.ok,
+      cloudflare_tunnel_url: tunnel.url,
       queue: store.queueStats(),
       worker: worker.getState(),
       storage: {
@@ -379,6 +381,37 @@ function createApp({ config, paths, store, eventHub, codexAdapter, worker, logge
   }
 
   return server;
+}
+
+function readTunnelStatus(paths) {
+  const fallback = { ok: false, url: "" };
+  try {
+    const file = path.join(paths.runDir, "tunnel-status.json");
+    if (!fs.existsSync(file)) {
+      return fallback;
+    }
+
+    const status = JSON.parse(fs.readFileSync(file, "utf8"));
+    const pid = Number(status.pid || 0);
+    if (!pid || !isPidAlive(pid)) {
+      return { ok: false, url: status.url || "" };
+    }
+    return { ok: Boolean(status.ok && status.url), url: status.url || "" };
+  } catch {
+    return fallback;
+  }
+}
+
+function isPidAlive(pid) {
+  if (!pid || pid === process.pid) {
+    return false;
+  }
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function requireApiAccess(request, config) {

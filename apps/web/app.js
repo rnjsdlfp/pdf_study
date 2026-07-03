@@ -12,7 +12,11 @@ const state = {
   eventSources: new Map()
 };
 
-const API_BASE = String(window.CODEX_READER_CONFIG?.apiBase || "").replace(/\/$/, "");
+let activeApiBase = normalizeApiBase(window.CODEX_READER_CONFIG?.apiBase || "");
+const API_BASE_CANDIDATES = uniqueApiBases([
+  activeApiBase,
+  ...(window.CODEX_READER_CONFIG?.apiBaseCandidates || [])
+]);
 
 const els = {
   documentTitle: document.getElementById("documentTitle"),
@@ -115,19 +119,31 @@ function bindEvents() {
 
 async function api(path, options = {}) {
   const { uploadRequest = false, ...fetchOptions } = options;
-  let response;
-  try {
-    response = await fetch(apiUrl(path), {
-      headers: {
-        ...(fetchOptions.body && !(fetchOptions.body instanceof FormData) ? { "Content-Type": "application/json" } : {}),
-        ...(fetchOptions.headers || {})
-      },
-      ...fetchOptions
-    });
-  } catch (error) {
-    throw networkFailureError(error, { uploadRequest });
+  let lastNetworkError = null;
+
+  for (const candidate of apiBaseCandidates()) {
+    let response;
+    try {
+      response = await fetch(apiUrl(path, candidate), {
+        headers: {
+          ...(fetchOptions.body && !(fetchOptions.body instanceof FormData) ? { "Content-Type": "application/json" } : {}),
+          ...(fetchOptions.headers || {})
+        },
+        ...fetchOptions
+      });
+    } catch (error) {
+      lastNetworkError = error;
+      continue;
+    }
+
+    activeApiBase = candidate;
+    return parseApiResponse(response);
   }
 
+  throw networkFailureError(lastNetworkError, { uploadRequest });
+}
+
+async function parseApiResponse(response) {
   const text = await response.text();
   let payload = {};
   try {
@@ -163,11 +179,32 @@ function networkFailureMessage(error, context = {}) {
   return message || "Network request failed.";
 }
 
-function apiUrl(path) {
-  if (!API_BASE) {
+function apiUrl(path, base = activeApiBase) {
+  if (!base) {
     return path;
   }
-  return `${API_BASE}${path}`;
+  return `${base}${path}`;
+}
+
+function normalizeApiBase(value) {
+  return String(value || "").replace(/\/$/, "");
+}
+
+function uniqueApiBases(values) {
+  const seen = new Set();
+  const result = [];
+  for (const value of values) {
+    const normalized = normalizeApiBase(value);
+    if (!seen.has(normalized)) {
+      seen.add(normalized);
+      result.push(normalized);
+    }
+  }
+  return result;
+}
+
+function apiBaseCandidates() {
+  return uniqueApiBases([activeApiBase, ...API_BASE_CANDIDATES]);
 }
 
 async function pollStatus() {
