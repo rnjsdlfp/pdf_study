@@ -23,6 +23,12 @@ On macOS, you can also double-click either of these files from Finder:
 
 The launcher starts the runner in the background, waits for `http://127.0.0.1:3001/health`, then opens the local reader in your browser.
 
+If macOS says the file could not be executed because you do not have access privileges, run this once from Terminal:
+
+```bash
+bash ./fix-mac-permissions.sh
+```
+
 For development inside this repository, set `CODEX_READER_HOME=./.runtime` so runtime data stays inside the ignored workspace folder.
 
 ## What Is Implemented

@@ -28,7 +28,13 @@ npm run start
 
 The launcher starts the backend in the background and opens `http://127.0.0.1:3001`.
 
-If macOS blocks the first launch, right-click the file and choose `Open`.
+If macOS says the file could not be executed because you do not have access privileges, run this once from Terminal:
+
+```bash
+bash ./fix-mac-permissions.sh
+```
+
+If macOS blocks the first launch for security reasons, right-click the file and choose `Open`.
 
 4. Confirm Codex CLI:
 
