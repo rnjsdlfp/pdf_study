@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+APP_MACOS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$APP_MACOS_DIR/../../.." && pwd)"
+
+exec "$ROOT_DIR/apps/mac-runner/CodexReaderLauncher.sh" "$ROOT_DIR"

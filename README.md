@@ -14,6 +14,15 @@ Then open:
 http://127.0.0.1:3001
 ```
 
+On macOS, you can also double-click either of these files from Finder:
+
+```text
+CodexReader.command
+Codex Reader.app
+```
+
+The launcher starts the runner in the background, waits for `http://127.0.0.1:3001/health`, then opens the local reader in your browser.
+
 For development inside this repository, set `CODEX_READER_HOME=./.runtime` so runtime data stays inside the ignored workspace folder.
 
 ## What Is Implemented

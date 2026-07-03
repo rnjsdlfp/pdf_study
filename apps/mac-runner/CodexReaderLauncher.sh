@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+PORT="${CODEX_READER_PORT:-3001}"
+HOST="${CODEX_READER_HOST:-127.0.0.1}"
+URL="http://${HOST}:${PORT}"
+RUNTIME_HOME="${CODEX_READER_HOME:-$HOME/Library/Application Support/CodexReader}"
+LOG_DIR="$RUNTIME_HOME/logs"
+LAUNCH_LOG="$LOG_DIR/launcher.log"
+
+show_message() {
+  local title="$1"
+  local message="$2"
+  if command -v osascript >/dev/null 2>&1; then
+    osascript -e "display dialog \"$message\" with title \"$title\" buttons {\"OK\"} default button \"OK\"" >/dev/null 2>&1 || true
+  else
+    printf '%s: %s\n' "$title" "$message"
+  fi
+}
+
+notify() {
+  local title="$1"
+  local message="$2"
+  if command -v osascript >/dev/null 2>&1; then
+    osascript -e "display notification \"$message\" with title \"$title\"" >/dev/null 2>&1 || true
+  fi
+}
+
+if [ ! -d "$ROOT_DIR/apps/mac-runner" ]; then
+  show_message "Codex Reader" "Could not find the Codex Reader source folder. Keep this launcher inside the repository folder."
+  exit 1
+fi
+
+if ! command -v node >/dev/null 2>&1; then
+  show_message "Codex Reader" "Node.js was not found. Install Node.js 22 or newer, then run this launcher again."
+  exit 1
+fi
+
+mkdir -p "$LOG_DIR"
+
+export CODEX_READER_HOME="$RUNTIME_HOME"
+export CODEX_READER_HOST="$HOST"
+export CODEX_READER_PORT="$PORT"
+export CODEX_READER_CODEX_MODE="${CODEX_READER_CODEX_MODE:-auto}"
+
+cd "$ROOT_DIR"
+
+{
+  printf '\n[%s] Launch requested from %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$ROOT_DIR"
+  printf '[%s] Runtime home: %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$RUNTIME_HOME"
+} >> "$LAUNCH_LOG"
+
+nohup node "$ROOT_DIR/apps/mac-runner/CodexReaderRunner.js" >> "$LAUNCH_LOG" 2>&1 &
+RUNNER_PID=$!
+
+for _ in $(seq 1 30); do
+  if curl -fsS "$URL/health" >/dev/null 2>&1; then
+    if command -v open >/dev/null 2>&1; then
+      open "$URL" >/dev/null 2>&1 || true
+    fi
+    notify "Codex Reader" "Server is running on $URL"
+    exit 0
+  fi
+
+  if ! kill -0 "$RUNNER_PID" >/dev/null 2>&1; then
+    # A second launch exits quickly when an existing runner is already alive.
+    sleep 1
+  else
+    sleep 1
+  fi
+done
+
+show_message "Codex Reader" "The server did not become ready. Check $LAUNCH_LOG for details."
+exit 1

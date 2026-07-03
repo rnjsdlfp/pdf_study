@@ -19,20 +19,45 @@ npm run start
 
 1. Keep this source folder in Dropbox or Git.
 2. Keep runtime data in `~/Library/Application Support/CodexReader`.
-3. Confirm Codex CLI:
+3. Double-click one of these files in Finder:
+
+```text
+CodexReader.command
+Codex Reader.app
+```
+
+The launcher starts the backend in the background and opens `http://127.0.0.1:3001`.
+
+If macOS blocks the first launch, right-click the file and choose `Open`.
+
+4. Confirm Codex CLI:
 
 ```bash
 codex --version
 codex exec --help
 ```
 
-4. Install launchd:
+5. Optional: install launchd for login-time auto-start:
 
 ```bash
 ./infra/macos/install-launchd.sh
 ```
 
-5. Configure Cloudflare Tunnel from `infra/cloudflare/README.md`.
+6. Configure Cloudflare Tunnel from `infra/cloudflare/README.md`.
+
+## Manual Terminal Run
+
+If you prefer Terminal:
+
+```bash
+./CodexReader.command
+```
+
+Or:
+
+```bash
+npm run start
+```
 
 ## Runtime Files
 

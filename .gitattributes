@@ -1,0 +1,4 @@
+*.sh text eol=lf
+*.command text eol=lf
+*.plist text eol=lf
+*.app/Contents/MacOS/* text eol=lf
