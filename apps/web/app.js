@@ -21,7 +21,7 @@ const API_DISCOVERY_URL = normalizeApiBase(window.CODEX_READER_CONFIG?.discovery
 const API_BASE_STORAGE_KEY = window.CODEX_READER_CONFIG?.apiBaseStorageKey || "codexReaderApiBaseV2";
 const FORCE_API_DISCOVERY = Boolean(window.CODEX_READER_CONFIG?.forceDiscovery);
 const PREFER_SAME_ORIGIN_API = Boolean(window.CODEX_READER_CONFIG?.preferSameOriginApi);
-const APP_BUILD_VERSION = "20260703-direct-status";
+const APP_BUILD_VERSION = "20260703-upload-fallback";
 let discoveryCheckedAt = 0;
 let discoveryPromise = null;
 let discoveryForcedOnce = false;
@@ -75,9 +75,16 @@ function init() {
 }
 
 function bindEvents() {
+  els.pickPdfButton.addEventListener("pointerdown", () => {
+    els.pdfInput.value = "";
+  });
   els.pickPdfButton.addEventListener("keydown", (event) => {
+    if (event.defaultPrevented) {
+      return;
+    }
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
+      els.pdfInput.value = "";
       els.pdfInput.click();
     }
   });
@@ -87,6 +94,7 @@ function bindEvents() {
       uploadPdf(file);
     }
   });
+  window.__CODEX_READER_APP_UPLOAD_HANDLER_ACTIVE = true;
 
   els.uploadForm.addEventListener("dragover", (event) => {
     event.preventDefault();
@@ -450,6 +458,8 @@ function setZoom(value) {
 
 async function uploadPdf(file) {
   try {
+    window.__CODEX_READER_APP_LAST_UPLOAD_FILE_SIGNATURE = [file.name, file.size, file.lastModified].join(":");
+    toast(`Uploading PDF: ${file.name}`);
     const form = new FormData();
     form.append("file", file);
     const payload = await api("/api/documents", {

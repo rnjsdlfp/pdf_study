@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Codex Reader</title>
-    <link rel="stylesheet" href="/styles.css?v=20260703-upload-label" />
+    <link rel="stylesheet" href="/styles.css?v=20260703-upload-fallback" />
   </head>
   <body>
     <div class="app-shell">
@@ -148,7 +148,7 @@
     </noscript>
     <script>
       (function () {
-        var build = "20260703-inline-bootstrap";
+        var build = "20260703-upload-fallback";
 
         function setStatus(id, state, text, title) {
           var element = document.getElementById(id);
@@ -181,6 +181,92 @@
           }, 9000);
         }
 
+        function fileSignature(file) {
+          return [file.name, file.size, file.lastModified].join(":");
+        }
+
+        function parseApiResponse(response) {
+          return response.text().then(function (text) {
+            var payload = {};
+            try {
+              payload = text ? JSON.parse(text) : {};
+            } catch (error) {
+              payload = { error: text || "The MacBook server returned an unreadable response." };
+            }
+            if (!response.ok) {
+              throw new Error(payload.error || "Request failed with HTTP " + response.status);
+            }
+            return payload;
+          });
+        }
+
+        function bootstrapUploadPdf(file, input) {
+          var signature = fileSignature(file);
+          if (window.__CODEX_READER_BOOTSTRAP_UPLOAD_IN_FLIGHT === signature) {
+            return;
+          }
+          window.__CODEX_READER_BOOTSTRAP_UPLOAD_IN_FLIGHT = signature;
+          window.__CODEX_READER_APP_LAST_UPLOAD_FILE_SIGNATURE = signature;
+
+          var form = new FormData();
+          form.append("file", file);
+          showToast("Uploading PDF: " + file.name);
+          fetch("/api/documents", {
+            method: "POST",
+            body: form,
+            cache: "no-store"
+          })
+            .then(parseApiResponse)
+            .then(function (payload) {
+              if (input) {
+                input.value = "";
+              }
+              showToast(payload.cache_hit ? "Opened cached PDF." : "PDF uploaded.");
+              var nextUrl = new URL(window.location.href);
+              nextUrl.searchParams.set("t", String(Date.now()));
+              window.location.href = nextUrl.toString();
+            })
+            .catch(function (error) {
+              window.__CODEX_READER_BOOTSTRAP_UPLOAD_IN_FLIGHT = "";
+              showToast("Upload failed: " + (error.message || error));
+            });
+        }
+
+        function bindUploadFallback() {
+          var input = document.getElementById("pdfInput");
+          var picker = document.getElementById("pickPdfButton");
+          if (!input || input.dataset.bootstrapUploadBound) {
+            return;
+          }
+          input.dataset.bootstrapUploadBound = "1";
+          if (picker) {
+            picker.addEventListener("pointerdown", function () {
+              input.value = "";
+            });
+            picker.addEventListener("keydown", function (event) {
+              if (event.defaultPrevented || (event.key !== "Enter" && event.key !== " ")) {
+                return;
+              }
+              event.preventDefault();
+              input.value = "";
+              input.click();
+            });
+          }
+          input.addEventListener("change", function () {
+            var file = input.files && input.files[0];
+            if (!file) {
+              return;
+            }
+            var signature = fileSignature(file);
+            window.setTimeout(function () {
+              if (window.__CODEX_READER_APP_LAST_UPLOAD_FILE_SIGNATURE === signature) {
+                return;
+              }
+              bootstrapUploadPdf(file, input);
+            }, 400);
+          });
+        }
+
         window.addEventListener("error", function (event) {
           showToast("Script error: " + (event.message || "unknown error"));
         });
@@ -193,6 +279,7 @@
         };
 
         setStatus("serverStatus", "warn", "Connecting", "Inline bootstrap " + build + "\nGET /api/system/status");
+        bindUploadFallback();
         fetch("/api/system/status", { cache: "no-store" })
           .then(function (response) {
             return response.text().then(function (text) {
@@ -238,7 +325,7 @@
           });
       })();
     </script>
-    <script src="/config.js?v=20260703-upload-label" onerror="window.codexReaderScriptLoadFailed && window.codexReaderScriptLoadFailed(this.src)"></script>
-    <script src="/app.js?v=20260703-upload-label" onerror="window.codexReaderScriptLoadFailed && window.codexReaderScriptLoadFailed(this.src)"></script>
+    <script src="/config.js?v=20260703-upload-fallback" onerror="window.codexReaderScriptLoadFailed && window.codexReaderScriptLoadFailed(this.src)"></script>
+    <script src="/app.js?v=20260703-upload-fallback" onerror="window.codexReaderScriptLoadFailed && window.codexReaderScriptLoadFailed(this.src)"></script>
   </body>
 </html>
