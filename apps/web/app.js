@@ -23,7 +23,7 @@ const API_DISCOVERY_URL = normalizeApiBase(window.CODEX_READER_CONFIG?.discovery
 const APP_API_BASE_STORAGE_KEY = window.CODEX_READER_CONFIG?.apiBaseStorageKey || "codexReaderApiBaseV2";
 const FORCE_API_DISCOVERY = Boolean(window.CODEX_READER_CONFIG?.forceDiscovery);
 const PREFER_SAME_ORIGIN_API = Boolean(window.CODEX_READER_CONFIG?.preferSameOriginApi);
-const APP_BUILD_VERSION = "20260703-analysis-tabs";
+const APP_BUILD_VERSION = "20260703-selection-terms";
 let discoveryCheckedAt = 0;
 let discoveryPromise = null;
 let discoveryForcedOnce = false;
@@ -534,7 +534,12 @@ function renderReader() {
     els.viewerGrid.classList.add("pdf-mode");
     els.pdfPreview.classList.add("active");
     els.pdfPreview.src = `${apiUrl(`/api/documents/${doc.id}/file`)}#page=${state.currentPage}`;
-    els.readerSurface.innerHTML = "";
+    const text = page?.text || doc.status_message || "No extracted text available.";
+    const highlighted = highlight(escapeHtml(cleanDisplayText(text)), escapeHtml(els.searchInput.value.trim()));
+    els.readerSurface.innerHTML = `
+      <div class="page-label">PDF text - page ${state.currentPage}</div>
+      <div class="page-text" data-page="${state.currentPage}">${highlighted}</div>
+    `;
     return;
   } else {
     els.viewerGrid.classList.remove("pdf-mode");
@@ -693,9 +698,9 @@ function renderAnalysisPanel() {
   const latestJob = state.analysis[0] || null;
   const latest = latestJob?.result || null;
   const useKorean = state.showKoreanSidebar;
-  els.summarySection.textContent = useKorean
+  els.summarySection.textContent = cleanDisplayText(useKorean
     ? latest?.summary_ko || latest?.summary_original || latest?.summary || state.currentDocument?.status_message || "Ready to analyze"
-    : latest?.summary_original || latest?.summary || latest?.summary_ko || state.currentDocument?.status_message || "Ready to analyze";
+    : latest?.summary_original || latest?.summary || latest?.summary_ko || state.currentDocument?.status_message || "Ready to analyze");
 
   els.termsSection.innerHTML = "";
   for (const term of latest?.terms || []) {
@@ -704,7 +709,7 @@ function renderAnalysisPanel() {
     const definition = useKorean
       ? term.definition_ko || term.definition_original || term.definition || ""
       : term.definition_original || term.definition || term.definition_ko || "";
-    item.innerHTML = `<strong>${escapeHtml(term.term || "Term")}</strong>${escapeHtml(definition)}`;
+    item.innerHTML = `<strong>${escapeHtml(cleanDisplayText(term.term || "Term"))}</strong>${escapeHtml(cleanDisplayText(definition))}`;
     els.termsSection.appendChild(item);
   }
   if (!latest?.terms?.length) {
@@ -722,13 +727,13 @@ function renderAnalysisPanel() {
   }
   for (const question of questions) {
     const item = document.createElement("li");
-    item.textContent = question;
+    item.textContent = cleanDisplayText(question);
     els.questionsSection.appendChild(item);
   }
 
   els.translateButton.disabled = !latest;
   els.translateButton.textContent = state.showKoreanSidebar ? "Show Original" : "Translate Korean";
-  els.translationSection.textContent = fullTextTranslation();
+  els.translationSection.textContent = cleanDisplayText(fullTextTranslation());
   renderSelectionJobs();
 }
 
@@ -842,7 +847,7 @@ function renderSelectionJobs() {
     item.innerHTML = `
       <span class="job-status ${escapeHtml(job.status)}">${escapeHtml(job.status)}</span>
       <strong>${escapeHtml(job.type.replaceAll("_", " "))}</strong>
-      <div>${escapeHtml(job.selection?.selection_text || "").slice(0, 180)}</div>
+      <div>${escapeHtml(cleanDisplayText(job.selection?.selection_text || "")).slice(0, 180)}</div>
       ${renderJobResult(job.type, result)}
     `;
     els.selectionJobsSection.appendChild(item);
@@ -854,9 +859,9 @@ function renderJobResult(type, result) {
     return "";
   }
   if (type === "selection_fact_check") {
-    return `<div><strong>${escapeHtml(result.verdict || "unclear")}</strong>${escapeHtml(result.explanation_ko || "")}</div>`;
+    return `<div><strong>${escapeHtml(cleanDisplayText(result.verdict || "unclear"))}</strong>${escapeHtml(cleanDisplayText(result.explanation_ko || ""))}</div>`;
   }
-  return `<div>${escapeHtml(result.explanation_original || result.explanation_ko || result.summary_original || result.summary_ko || "")}</div>`;
+  return `<div>${escapeHtml(cleanDisplayText(result.explanation_original || result.explanation_ko || result.summary_original || result.summary_ko || ""))}</div>`;
 }
 
 function highlight(html, query) {
@@ -881,6 +886,14 @@ function toast(message) {
   item.textContent = message;
   els.toastStack.appendChild(item);
   setTimeout(() => item.remove(), 4200);
+}
+
+function cleanDisplayText(value) {
+  return String(value || "")
+    .replace(/\*\*/g, "")
+    .replace(/^\s{0,3}#{1,6}\s*/gm, "")
+    .replace(/[ \t]+\n/g, "\n")
+    .trim();
 }
 
 function escapeHtml(value) {

@@ -83,7 +83,7 @@ class CodexAdapter {
       if (!parsed) {
         throw new Error(`Codex returned non-JSON output. ${stderr || ""}`.trim());
       }
-      return parsed;
+      return sanitizeCodexResult(parsed);
     } catch (error) {
       this.logger.warn("Codex execution failed; using fallback when allowed.", {
         jobType,
@@ -248,7 +248,7 @@ function buildPrompt(jobType, context) {
       '{"claim":"string","verdict":"supported|contradicted|unclear|not_checkable","explanation_ko":"string","sources":[{"title":"string","url":"string","publisher":"string","published_date":"string","accessed_date":"' +
         date +
         '","relevance":"high|medium|low"}],"caveats":["string"],"confidence":"high|medium|low"}',
-      "Use web search. Cite external sources. If the claim cannot be checked, use not_checkable.",
+      "Use web search. Cite external sources. If the claim cannot be checked, use not_checkable. Use plain text only. Do not use Markdown, bold markers, headings, or ** anywhere in string values.",
       `Document title: ${context.document_title || "Untitled"}`,
       `Claim or selected text:\n${text}`
     ].join("\n\n");
@@ -258,7 +258,8 @@ function buildPrompt(jobType, context) {
     return [
       "Return JSON only, matching this schema:",
       '{"explanation_original":"string","explanation_ko":"string","terms":[{"term":"string","definition_original":"string","definition_ko":"string"}],"translation_ko":"string","follow_up_questions":["string"]}',
-      "Use the source document language for explanation_original and definition_original. Put Korean only in explanation_ko, definition_ko, and translation_ko. Do not use web search.",
+      "Use the source document language for explanation_original and definition_original. Put Korean only in explanation_ko, definition_ko, and translation_ko. Do not use web search. Use plain text only. Do not use Markdown, bold markers, headings, or ** anywhere in string values.",
+      termSelectionInstruction(5),
       `Document title: ${context.document_title || "Untitled"}`,
       `Selected text:\n${text}`,
       `Surrounding context:\n${truncate(context.surrounding_text || "", 4000)}`
@@ -270,6 +271,8 @@ function buildPrompt(jobType, context) {
     '{"summary_original":"string","summary_ko":"string","terms":[{"term":"string","definition_original":"string","definition_ko":"string"}],"follow_up_questions_original":["string"],"follow_up_questions_ko":["string"],"full_text_translation_ko":"string","translation_ko":"string","sources":[]}',
     "Use Codex CLI reasoning for every field. Analyze the source text in the source language for summary_original, definition_original, and follow_up_questions_original. Put Korean only in summary_ko, definition_ko, follow_up_questions_ko, full_text_translation_ko, and translation_ko.",
     "translation_ko must be the same value as full_text_translation_ko for backward compatibility. full_text_translation_ko should translate the provided extracted body text, preserving page cues and important numbers. Do not use web search. Keep Summary, Terms, and Follow-up Questions concise and useful for research reading.",
+    "Use plain text only. Do not use Markdown, bold markers, headings, bullet syntax, or ** anywhere in string values.",
+    termSelectionInstruction(10),
     `Analysis scope: ${jobType}`,
     `Document title: ${context.document_title || "Untitled"}`,
     `Text:\n${text}`
@@ -278,6 +281,35 @@ function buildPrompt(jobType, context) {
 
 function requiresCodexCli(jobType) {
   return [JOB_TYPES.PAGE_ANALYSIS, JOB_TYPES.DOCUMENT_ANALYSIS, JOB_TYPES.SELECTION_EXPLAIN].includes(jobType);
+}
+
+function termSelectionInstruction(targetCount) {
+  return [
+    `Terms selection criteria: return about ${targetCount} terms when available.`,
+    "Prioritize abbreviations, acronyms, tickers, metric names, endpoints, regulatory/commercial shorthand, and genuinely difficult domain-specific words.",
+    "Prefer terms that affect interpretation of the document. Exclude generic business words, ordinary verbs/adjectives, boilerplate, and company names unless the abbreviation or ticker itself needs explanation."
+  ].join(" ");
+}
+
+function sanitizeCodexResult(value) {
+  if (typeof value === "string") {
+    return stripMarkdownOutputMarkers(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map(sanitizeCodexResult);
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, sanitizeCodexResult(item)]));
+  }
+  return value;
+}
+
+function stripMarkdownOutputMarkers(value) {
+  return String(value || "")
+    .replace(/\*\*/g, "")
+    .replace(/^\s{0,3}#{1,6}\s*/gm, "")
+    .replace(/[ \t]+\n/g, "\n")
+    .trim();
 }
 
 function parseCodexJson(stdout) {
@@ -358,7 +390,7 @@ function fallbackResult(jobType, context, caveat) {
     return {
       explanation_original: makeOriginalSummary(text),
       explanation_ko: `선택한 문장은 문서 안에서 다음 내용을 말합니다: ${makeSummary(text)}`,
-      terms: makeTerms(text),
+      terms: makeSpecializedTerms(text),
       translation_ko: makeTranslationNote(text),
       follow_up_questions: makeQuestions(text, true),
       caveats: [caveat]
@@ -368,7 +400,7 @@ function fallbackResult(jobType, context, caveat) {
   return {
     summary_original: makeOriginalSummary(text),
     summary_ko: makeSummary(text),
-    terms: makeTerms(text),
+    terms: makeSpecializedTerms(text),
     full_text_translation_ko: makeTranslationNote(text),
     translation_ko: makeTranslationNote(text),
     follow_up_questions_original: makeQuestions(text, false),
@@ -411,6 +443,64 @@ function makeTerms(text) {
       term: item.term,
       definition_original: "Repeated source-text term. Check the surrounding PDF context for the exact definition.",
       definition_ko: "문서에서 반복적으로 등장하는 핵심 후보 용어입니다. 정확한 정의는 원문 맥락에서 확인하세요."
+    }));
+}
+
+function makeSpecializedTerms(text) {
+  const common = new Set([
+    "about",
+    "after",
+    "also",
+    "analysis",
+    "business",
+    "company",
+    "could",
+    "document",
+    "expected",
+    "from",
+    "have",
+    "into",
+    "market",
+    "more",
+    "other",
+    "page",
+    "report",
+    "research",
+    "should",
+    "than",
+    "that",
+    "their",
+    "there",
+    "this",
+    "with",
+    "would"
+  ]);
+  const counts = new Map();
+  const words = normalizeWhitespace(text)
+    .split(/[^A-Za-z0-9&./-]+/)
+    .map((word) => word.replace(/^[./-]+|[./-]+$/g, ""))
+    .filter((word) => word.length >= 2 && !/^\d+$/.test(word) && !common.has(word.toLowerCase()));
+
+  for (const word of words) {
+    const key = word.toLowerCase();
+    const abbreviation = /^[A-Z0-9&/-]{2,10}$/.test(word) && /[A-Z]/.test(word);
+    const difficult = word.length >= 9 || /[-/&]/.test(word);
+    if (!abbreviation && !difficult) {
+      continue;
+    }
+    const score = (abbreviation ? 12 : 0) + (difficult ? 5 : 0);
+    counts.set(key, { term: word, count: (counts.get(key)?.count || 0) + 1, score });
+  }
+
+  return [...counts.values()]
+    .sort((a, b) => b.score + b.count - (a.score + a.count))
+    .slice(0, 10)
+    .map((item) => ({
+      term: item.term,
+      definition_original:
+        "Specialized abbreviation, metric, or difficult source-text term. Check the surrounding context for the precise document-specific meaning.",
+      definition_ko:
+        "문서 이해에 영향을 줄 수 있는 약어, 지표, 또는 난도가 높은 전문용어입니다. 정확한 의미는 주변 문맥을 함께 확인하세요."
     }));
 }
 
@@ -476,5 +566,7 @@ module.exports = {
   parseCodexJson,
   codexCommandCandidates,
   requiresCodexCli,
+  sanitizeCodexResult,
+  stripMarkdownOutputMarkers,
   fallbackResult
 };

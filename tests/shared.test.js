@@ -15,7 +15,13 @@ const {
   stripPdfBoilerplate,
   isBoilerplateParagraph
 } = require("../apps/server/src/pdfExtractor");
-const { parseCodexJson, codexCommandCandidates, buildCodexArgs, firstCommandWord } = require("../apps/server/src/codexAdapter");
+const {
+  parseCodexJson,
+  codexCommandCandidates,
+  buildCodexArgs,
+  firstCommandWord,
+  sanitizeCodexResult
+} = require("../apps/server/src/codexAdapter");
 const { isPidAlive } = require("../apps/mac-runner/CodexReaderRunner");
 const { Readable } = require("node:stream");
 const { formatBytes, readBuffer } = require("../apps/server/src/server");
@@ -86,6 +92,16 @@ test("PDF ToUnicode CMap decoding restores encoded glyphs", () => {
 test("Codex JSON parser finds final JSON object", () => {
   const parsed = parseCodexJson('{"type":"event"}\n{"message":"result: {\\"ok\\":true}"}');
   assert.equal(parsed.ok, true);
+});
+
+test("Codex result sanitizer removes markdown emphasis markers", () => {
+  const cleaned = sanitizeCodexResult({
+    summary_original: "**Sharp inflection** expected",
+    terms: [{ term: "**EBITDA**", definition_original: "# earnings metric" }]
+  });
+  assert.equal(cleaned.summary_original, "Sharp inflection expected");
+  assert.equal(cleaned.terms[0].term, "EBITDA");
+  assert.equal(cleaned.terms[0].definition_original, "earnings metric");
 });
 
 test("Codex command lookup includes explicit and common paths", () => {

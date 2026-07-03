@@ -34,10 +34,22 @@ const analysisSchema = {
 
 const selectionExplainSchema = {
   type: "object",
-  required: ["explanation_ko", "terms", "translation_ko", "follow_up_questions"],
+  required: ["explanation_original", "explanation_ko", "terms", "translation_ko", "follow_up_questions"],
   properties: {
+    explanation_original: { type: "string" },
     explanation_ko: { type: "string" },
-    terms: { type: "array" },
+    terms: {
+      type: "array",
+      items: {
+        type: "object",
+        required: ["term", "definition_original", "definition_ko"],
+        properties: {
+          term: { type: "string" },
+          definition_original: { type: "string" },
+          definition_ko: { type: "string" }
+        }
+      }
+    },
     translation_ko: { type: "string" },
     follow_up_questions: { type: "array", items: { type: "string" } }
   }

@@ -396,6 +396,7 @@ svg {
 }
 
 .viewer-grid.pdf-mode {
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.85fr);
   grid-template-rows: minmax(0, 1fr);
 }
 
@@ -414,10 +415,15 @@ svg {
 
 .viewer-grid.pdf-mode .pdf-preview {
   border-bottom: 0;
+  border-right: 1px solid var(--line);
 }
 
 .viewer-grid.pdf-mode .reader-surface {
-  display: none;
+  display: block;
+  background: #fff;
+  border-left: 0;
+  padding: 22px 24px;
+  font-size: calc(14px * var(--reader-scale));
 }
 
 .reader-surface {
@@ -791,6 +797,16 @@ mark {
 
   .viewer-grid {
     grid-template-rows: 220px minmax(0, 1fr);
+  }
+
+  .viewer-grid.pdf-mode {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(340px, 58vh) minmax(220px, 34vh);
+  }
+
+  .viewer-grid.pdf-mode .pdf-preview {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
   }
 
   .reader-surface {
