@@ -18,6 +18,8 @@
     <string>3001</string>
     <key>CODEX_READER_HOME</key>
     <string>__HOME__/Library/Application Support/CodexReader</string>
+    <key>CODEX_READER_PYTHON</key>
+    <string>__HOME__/Library/Application Support/CodexReader/python/bin/python</string>
     <key>PATH</key>
     <string>__HOME__/.npm-global/bin:__HOME__/.local/bin:__HOME__/.bun/bin:__HOME__/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
   </dict>

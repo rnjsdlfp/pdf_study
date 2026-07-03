@@ -17,6 +17,11 @@ TUNNEL_LOG="$LOG_DIR/tunnel.log"
 STATUS_FILE="$RUN_DIR/tunnel-status.json"
 MAC_RUNNER_PATH="$HOME/.npm-global/bin:$HOME/.local/bin:$HOME/.bun/bin:$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 export PATH="$MAC_RUNNER_PATH:${PATH:-}"
+NPM_CACHE_DIR="$RUNTIME_HOME/npm-cache"
+export npm_config_cache="$NPM_CACHE_DIR"
+export NPM_CONFIG_CACHE="$NPM_CACHE_DIR"
+export npm_config_update_notifier=false
+export NPM_CONFIG_UPDATE_NOTIFIER=false
 
 show_message() {
   local title="$1"
@@ -76,7 +81,7 @@ if ! command -v npx >/dev/null 2>&1; then
   exit 1
 fi
 
-mkdir -p "$LOG_DIR" "$RUN_DIR"
+mkdir -p "$LOG_DIR" "$RUN_DIR" "$NPM_CACHE_DIR"
 
 export CODEX_READER_HOME="$RUNTIME_HOME"
 export CODEX_READER_HOST="$HOST"
@@ -84,6 +89,15 @@ export CODEX_READER_PORT="$PORT"
 export CODEX_READER_CODEX_MODE="${CODEX_READER_CODEX_MODE:-auto}"
 if [ -z "${CODEX_READER_CODEX_COMMAND:-}" ] && command -v codex >/dev/null 2>&1; then
   export CODEX_READER_CODEX_COMMAND="$(command -v codex)"
+fi
+
+PYTHON_DEPS_SCRIPT="$ROOT_DIR/infra/macos/ensure-python-pdf-deps.sh"
+if [ -x "$PYTHON_DEPS_SCRIPT" ]; then
+  if "$PYTHON_DEPS_SCRIPT" "$ROOT_DIR" "$RUNTIME_HOME" >> "$RUNNER_LOG" 2>&1; then
+    export CODEX_READER_PYTHON="$RUNTIME_HOME/python/bin/python"
+  else
+    printf '[%s] PyMuPDF4LLM setup failed; legacy PDF extractor will be used.\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$RUNNER_LOG"
+  fi
 fi
 
 cd "$ROOT_DIR"
@@ -120,6 +134,7 @@ fi
 {
   printf '\n[%s] Starting Cloudflare Tunnel mode=%s -> %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$TUNNEL_MODE" "$LOCAL_URL"
   printf '[%s] PATH: %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$PATH"
+  printf '[%s] npm cache: %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$NPM_CACHE_DIR"
   printf '[%s] Codex command: %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "${CODEX_READER_CODEX_COMMAND:-not found in launcher PATH}"
 } >> "$TUNNEL_LOG"
 

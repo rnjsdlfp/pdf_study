@@ -36,6 +36,8 @@ bash ./fix-mac-permissions.sh
 
 If macOS blocks the first launch for security reasons, right-click the file and choose `Open`.
 
+On first launch, the app creates a private Python environment under `~/Library/Application Support/CodexReader/python` and installs `pymupdf4llm` there for PDF extraction. If that setup fails, uploads still work through the built-in JavaScript fallback extractor.
+
 When you open `https://pdf-study.pages.dev/` on the same MacBook, the web UI connects to `http://127.0.0.1:3001`.
 
 To force same-Mac local mode:
@@ -45,6 +47,18 @@ https://pdf-study.pages.dev/?apiBase=http://127.0.0.1:3001
 ```
 
 For another device, such as an iPad or a different laptop, double-click `★CodexReader Tunnel.command`. It opens Pages with a temporary Cloudflare Quick Tunnel API URL.
+
+The default Quick Tunnel flow does not require:
+
+```bash
+npx wrangler login
+```
+
+The Tunnel launcher uses a writable npm cache under `~/Library/Application Support/CodexReader/npm-cache`. If you still want to fix the global npm cache error for other commands, run:
+
+```bash
+sudo chown -R "$(id -u):$(id -g)" "$HOME/.npm"
+```
 
 4. Confirm Codex CLI:
 
@@ -97,6 +111,9 @@ The runner creates:
     jobs/
   logs/
   run/
+  python/
+  pip-cache/
+  npm-cache/
 ```
 
 The current MVP uses `reader-store.json` because this environment has no SQLite driver installed. `infra/macos/reader.schema.sql` defines the SQLite target schema.

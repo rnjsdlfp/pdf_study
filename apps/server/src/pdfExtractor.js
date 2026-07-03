@@ -1,19 +1,51 @@
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
+const { spawnSync } = require("child_process");
 const zlib = require("zlib");
 const { sha256 } = require("../../../packages/shared/src");
 
-function extractPdf(buffer) {
+function extractPdf(buffer, options = {}) {
   const pageCount = Math.max(countPages(buffer), 1);
+  const pymupdf = extractWithPyMuPDF4LLM(buffer, options);
+  if (pymupdf.ok) {
+    return buildExtractionResult({
+      pageTexts: pymupdf.pages.map((page) => page.text),
+      pageCount: pymupdf.pageCount || pymupdf.pages.length || pageCount,
+      extractor: "PyMuPDF4LLM"
+    });
+  }
+
   const extractedText = normalizeText(extractTextFromStreams(buffer));
   const cleaned = stripPdfBoilerplate(extractedText);
   const text = isLikelyExtractedText(cleaned.text) ? cleaned.text : "";
-  const pages = splitIntoPages(text, pageCount);
-  const confidence = text.length > 500 ? "medium" : text.length > 20 ? "low" : "none";
+  return buildExtractionResult({
+    pageTexts: splitIntoPages(text, pageCount),
+    pageCount,
+    extractor: "legacy",
+    removedCount: cleaned.removedCount,
+    fallbackReason: pymupdf.reason
+  });
+}
+
+function buildExtractionResult({ pageTexts, pageCount, extractor, removedCount = 0, fallbackReason = "" }) {
+  const normalizedPages = pageTexts.map((pageText) => stripPdfBoilerplate(normalizeText(pageText || "")));
+  const pages = normalizedPages.map((page) => page.text);
+  while (pages.length < pageCount) {
+    pages.push("");
+  }
+  const text = pages.join("\n\n").trim();
+  const totalRemoved = normalizedPages.reduce((sum, page) => sum + page.removedCount, removedCount);
+  const confidence = text.length > 500 ? "high" : text.length > 20 ? "medium" : "none";
 
   if (text.length === 0) {
     return {
       pageCount,
       status: "needs_ocr",
-      statusMessage: "PDF uploaded, but no selectable text was found. OCR is required for this file.",
+      statusMessage:
+        extractor === "legacy" && fallbackReason
+          ? `PDF uploaded, but no selectable text was found. PyMuPDF4LLM was unavailable (${fallbackReason}).`
+          : "PDF uploaded, but no selectable text was found. OCR is required for this file.",
       pages: Array.from({ length: pageCount }, (_, index) => ({
         page_number: index + 1,
         text: "",
@@ -24,12 +56,9 @@ function extractPdf(buffer) {
   }
 
   return {
-    pageCount: pages.length,
+    pageCount: Math.max(pageCount, pages.length),
     status: "ready",
-    statusMessage:
-      cleaned.removedCount > 0
-        ? `Ready to analyze. Removed ${cleaned.removedCount} boilerplate section(s).`
-        : "Ready to analyze",
+    statusMessage: readyStatusMessage(extractor, totalRemoved, fallbackReason),
     pages: pages.map((pageText, index) => ({
       page_number: index + 1,
       text: pageText,
@@ -37,6 +66,117 @@ function extractPdf(buffer) {
       extraction_confidence: confidence
     }))
   };
+}
+
+function readyStatusMessage(extractor, removedCount, fallbackReason) {
+  const parts = [`Ready to analyze (${extractor}).`];
+  if (removedCount > 0) {
+    parts.push(`Removed ${removedCount} boilerplate section(s).`);
+  }
+  if (extractor === "legacy" && fallbackReason) {
+    parts.push(`PyMuPDF4LLM fallback reason: ${fallbackReason}.`);
+  }
+  return parts.join(" ");
+}
+
+function extractWithPyMuPDF4LLM(buffer, options = {}) {
+  const mode = String(process.env.CODEX_READER_PDF_EXTRACTOR || "auto").toLowerCase();
+  if (mode === "legacy" || mode === "js") {
+    return { ok: false, reason: "disabled" };
+  }
+
+  const script = path.resolve(__dirname, "..", "tools", "pymupdf4llm_extract.py");
+  if (!fs.existsSync(script)) {
+    return { ok: false, reason: "helper_missing" };
+  }
+
+  const cleanup = [];
+  let pdfPath = options.filePath || "";
+  try {
+    if (!pdfPath) {
+      pdfPath = path.join(os.tmpdir(), `codex-reader-${process.pid}-${Date.now()}.pdf`);
+      fs.writeFileSync(pdfPath, buffer);
+      cleanup.push(pdfPath);
+    }
+
+    const python = resolvePythonCommand();
+    if (!python) {
+      return { ok: false, reason: "python_not_found" };
+    }
+
+    const args = [script, pdfPath];
+    if (String(process.env.CODEX_READER_PDF_FORCE_OCR || "false") === "true") {
+      args.push("--force-ocr");
+    }
+    if (String(process.env.CODEX_READER_PDF_USE_OCR || "true") === "false") {
+      args.push("--no-ocr");
+    }
+
+    const result = spawnSync(python, args, {
+      encoding: "utf8",
+      maxBuffer: 1024 * 1024 * 32,
+      env: process.env
+    });
+    const parsed = parseHelperJson(result.stdout);
+    if (!parsed || !parsed.ok) {
+      return {
+        ok: false,
+        reason: parsed?.error || normalizeText(result.stderr || result.error?.message || "helper_failed").slice(0, 160)
+      };
+    }
+
+    const pages = Array.isArray(parsed.pages)
+      ? parsed.pages.map((page) => ({
+          pageNumber: Number(page.page_number || 0),
+          text: normalizeText(page.text || "")
+        }))
+      : [];
+    if (!pages.some((page) => isLikelyExtractedText(page.text))) {
+      return { ok: false, reason: "empty_output" };
+    }
+
+    return {
+      ok: true,
+      pageCount: Number(parsed.page_count || pages.length || 1),
+      pages
+    };
+  } catch (error) {
+    return { ok: false, reason: error.message };
+  } finally {
+    for (const file of cleanup) {
+      try {
+        fs.rmSync(file, { force: true });
+      } catch {
+        // Best effort cleanup only.
+      }
+    }
+  }
+}
+
+function parseHelperJson(stdout) {
+  try {
+    return JSON.parse(String(stdout || "").trim());
+  } catch {
+    return null;
+  }
+}
+
+function resolvePythonCommand() {
+  const candidates = [
+    process.env.CODEX_READER_PYTHON,
+    process.platform === "win32" ? "python.exe" : "python3",
+    "python"
+  ].filter(Boolean);
+  for (const candidate of candidates) {
+    const result = spawnSync(candidate, ["--version"], {
+      encoding: "utf8",
+      timeout: 3000
+    });
+    if (result.status === 0) {
+      return candidate;
+    }
+  }
+  return "";
 }
 
 function countPages(buffer) {

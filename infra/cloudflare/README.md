@@ -16,6 +16,8 @@ https://pdf-study.pages.dev/?apiBase=<temporary tunnel URL>
 
 This default mode does not need a custom domain or DNS record. The tunnel URL changes when the tunnel restarts.
 
+Quick Tunnel mode also does not require `npx wrangler login`. The launcher sets `NPM_CONFIG_CACHE` to `~/Library/Application Support/CodexReader/npm-cache` so root-owned files in `~/.npm` do not block the app.
+
 ## Optional: Named Tunnel
 
 Use a named tunnel only after choosing a project-owned domain, for example:

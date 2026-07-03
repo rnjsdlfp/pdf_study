@@ -9,6 +9,10 @@ NODE_PATH="$(command -v node)"
 mkdir -p "$HOME/Library/LaunchAgents"
 mkdir -p "$HOME/Library/Application Support/CodexReader/logs"
 
+if [ -x "$APP_ROOT/infra/macos/ensure-python-pdf-deps.sh" ]; then
+  "$APP_ROOT/infra/macos/ensure-python-pdf-deps.sh" "$APP_ROOT" "$HOME/Library/Application Support/CodexReader" || true
+fi
+
 sed \
   -e "s#__APP_ROOT__#$APP_ROOT#g" \
   -e "s#__HOME__#$HOME#g" \

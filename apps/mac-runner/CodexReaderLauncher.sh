@@ -49,6 +49,15 @@ if [ -z "${CODEX_READER_CODEX_COMMAND:-}" ] && command -v codex >/dev/null 2>&1;
   export CODEX_READER_CODEX_COMMAND="$(command -v codex)"
 fi
 
+PYTHON_DEPS_SCRIPT="$ROOT_DIR/infra/macos/ensure-python-pdf-deps.sh"
+if [ -x "$PYTHON_DEPS_SCRIPT" ]; then
+  if "$PYTHON_DEPS_SCRIPT" "$ROOT_DIR" "$RUNTIME_HOME" >> "$LAUNCH_LOG" 2>&1; then
+    export CODEX_READER_PYTHON="$RUNTIME_HOME/python/bin/python"
+  else
+    printf '[%s] PyMuPDF4LLM setup failed; legacy PDF extractor will be used.\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$LAUNCH_LOG"
+  fi
+fi
+
 cd "$ROOT_DIR"
 
 {

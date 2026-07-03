@@ -291,7 +291,7 @@ function createApp({ config, paths, store, eventHub, codexAdapter, worker, logge
     const savedPath = assertInside(paths.uploadsDir, path.join(paths.uploadsDir, `${fileHash}.pdf`));
     fs.writeFileSync(savedPath, file.buffer);
 
-    const extracted = extractPdf(file.buffer);
+    const extracted = extractPdf(file.buffer, { filePath: savedPath });
     const document = store.createDocument(
       {
         source_type: "pdf",
@@ -361,7 +361,7 @@ function createApp({ config, paths, store, eventHub, codexAdapter, worker, logge
         return document;
       }
 
-      const extracted = extractPdf(fs.readFileSync(filePath));
+      const extracted = extractPdf(fs.readFileSync(filePath), { filePath });
       return store.replaceDocumentPages(
         document.id,
         {

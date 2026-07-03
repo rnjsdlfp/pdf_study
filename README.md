@@ -39,12 +39,14 @@ For access from another device, use the Tunnel launcher:
 
 The Tunnel launcher uses Cloudflare Quick Tunnel by default. It creates a temporary `https://*.trycloudflare.com` API URL, opens Pages with that URL in `apiBase`, and does not require a custom DNS record.
 
+The launcher uses app-local caches under `~/Library/Application Support/CodexReader`, so `npx wrangler login` is not required for the default Quick Tunnel flow.
+
 For development inside this repository, set `CODEX_READER_HOME=./.runtime` so runtime data stays inside the ignored workspace folder.
 
 ## What Is Implemented
 
-- Local Node server with no third-party runtime dependencies.
-- PDF upload, hashing, local storage, and best-effort text extraction.
+- Local Node server with optional Python helpers for richer PDF extraction.
+- PDF upload, hashing, local storage, and PyMuPDF4LLM-first text extraction with JavaScript fallback.
 - Webpage URL import with readable text extraction.
 - Documents, pages, selections, jobs, cache, and source records.
 - Lease-based single-worker job queue.
