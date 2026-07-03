@@ -206,6 +206,11 @@ svg {
   width: 100%;
 }
 
+.button[hidden],
+.icon-button[hidden] {
+  display: none;
+}
+
 .icon-button {
   width: 36px;
   padding: 0;
