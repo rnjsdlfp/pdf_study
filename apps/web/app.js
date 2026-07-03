@@ -26,7 +26,8 @@ const API_DISCOVERY_URL = normalizeApiBase(window.CODEX_READER_CONFIG?.discovery
 const APP_API_BASE_STORAGE_KEY = window.CODEX_READER_CONFIG?.apiBaseStorageKey || "codexReaderApiBaseV2";
 const FORCE_API_DISCOVERY = Boolean(window.CODEX_READER_CONFIG?.forceDiscovery);
 const PREFER_SAME_ORIGIN_API = Boolean(window.CODEX_READER_CONFIG?.preferSameOriginApi);
-const APP_BUILD_VERSION = "20260703-default-followups";
+const APP_BUILD_VERSION = "20260703-default-followups-v2";
+const ACTIVE_PROMPT_VERSION = "2026-07-03-default-followup-style";
 const DEFAULT_FOLLOW_UP_QUESTIONS = Object.freeze({
   English: [
     "Find any logical errors or contradictions in the whole content and explain them objectively.",
@@ -812,7 +813,10 @@ function renderAnalysisPanel() {
   const resultQuestions = useKorean
     ? latest?.follow_up_questions_ko || latest?.follow_up_questions || latest?.follow_up_questions_original || []
     : latest?.follow_up_questions_original || latest?.follow_up_questions || latest?.follow_up_questions_ko || [];
-  const questions = mergeQuestions(DEFAULT_FOLLOW_UP_QUESTIONS[state.responseLanguage], resultQuestions);
+  const useGeneratedQuestions = latest?.prompt_version === ACTIVE_PROMPT_VERSION && resultQuestions.length > 0;
+  const questions = useGeneratedQuestions
+    ? mergeQuestions([], resultQuestions)
+    : mergeQuestions(DEFAULT_FOLLOW_UP_QUESTIONS[state.responseLanguage], []);
   if (questions.length === 0) {
     const item = document.createElement("li");
     item.textContent = "Run Analyze Document to generate questions.";

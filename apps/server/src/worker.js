@@ -1,6 +1,7 @@
 const {
   JOB_TYPES,
   JOB_STATUS,
+  PROMPT_VERSION,
   hasRequiredShape,
   makeCacheKey,
   normalizeFactCheckResult
@@ -119,6 +120,12 @@ function createWorker({ store, eventHub, codexAdapter, logger }) {
   function normalizeResult(jobType, result) {
     if (jobType === JOB_TYPES.SELECTION_FACT_CHECK) {
       return normalizeFactCheckResult(result, new Date().toISOString().slice(0, 10));
+    }
+    if (jobType === JOB_TYPES.PAGE_ANALYSIS || jobType === JOB_TYPES.DOCUMENT_ANALYSIS) {
+      return {
+        ...result,
+        prompt_version: PROMPT_VERSION
+      };
     }
     return result;
   }
