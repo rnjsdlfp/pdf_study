@@ -20,6 +20,7 @@ function readApiBaseOverride() {
 
   const fromQuery = normalizeApiBase(params.get("apiBase"));
   if (fromQuery) {
+    localStorage.removeItem(API_BASE_STORAGE_KEY);
     return fromQuery;
   }
 
