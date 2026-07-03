@@ -26,7 +26,19 @@ const API_DISCOVERY_URL = normalizeApiBase(window.CODEX_READER_CONFIG?.discovery
 const APP_API_BASE_STORAGE_KEY = window.CODEX_READER_CONFIG?.apiBaseStorageKey || "codexReaderApiBaseV2";
 const FORCE_API_DISCOVERY = Boolean(window.CODEX_READER_CONFIG?.forceDiscovery);
 const PREFER_SAME_ORIGIN_API = Boolean(window.CODEX_READER_CONFIG?.preferSameOriginApi);
-const APP_BUILD_VERSION = "20260703-language-followups";
+const APP_BUILD_VERSION = "20260703-default-followups";
+const DEFAULT_FOLLOW_UP_QUESTIONS = Object.freeze({
+  English: [
+    "Find any logical errors or contradictions in the whole content and explain them objectively.",
+    "From a Devil's Advocate perspective, rebut the main points of this content one by one.",
+    "Explain the whole content simply at a level a middle-school student can understand."
+  ],
+  Korean: [
+    "전체 내용에서 논리적 오류 또는 상충되는 부분을 찾아 객관적으로 설명해주세요",
+    "Devil's Advocate 관점에서 이 내용의 주요 내용을 하나하나 반박해주세요",
+    "전체 내용을 중학생이 이해할 수 있는 수준으로 쉽게 설명해주세요"
+  ]
+});
 let discoveryCheckedAt = 0;
 let discoveryPromise = null;
 let discoveryForcedOnce = false;
@@ -797,12 +809,13 @@ function renderAnalysisPanel() {
     : latest?.summary_original || latest?.summary || latest?.summary_ko || state.currentDocument?.status_message || "Ready to analyze");
 
   els.questionsSection.innerHTML = "";
-  const questions = useKorean
+  const resultQuestions = useKorean
     ? latest?.follow_up_questions_ko || latest?.follow_up_questions || latest?.follow_up_questions_original || []
     : latest?.follow_up_questions_original || latest?.follow_up_questions || latest?.follow_up_questions_ko || [];
+  const questions = mergeQuestions(DEFAULT_FOLLOW_UP_QUESTIONS[state.responseLanguage], resultQuestions);
   if (questions.length === 0) {
     const item = document.createElement("li");
-    item.textContent = latest ? "No follow-up questions returned." : "Run Analyze Document to generate questions.";
+    item.textContent = "Run Analyze Document to generate questions.";
     els.questionsSection.appendChild(item);
   }
   for (const question of questions) {
@@ -825,6 +838,21 @@ function renderAnalysisPanel() {
   }
 
   els.translationSection.textContent = cleanDisplayText(fullTextTranslation());
+}
+
+function mergeQuestions(defaultQuestions, resultQuestions) {
+  const seen = new Set();
+  const merged = [];
+  for (const question of [...(defaultQuestions || []), ...(resultQuestions || [])]) {
+    const cleanQuestion = cleanDisplayText(question);
+    const key = cleanQuestion.toLowerCase();
+    if (!cleanQuestion || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    merged.push(cleanQuestion);
+  }
+  return merged;
 }
 
 function renderAnalysisTabs() {

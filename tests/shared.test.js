@@ -22,7 +22,8 @@ const {
   buildPrompt,
   firstCommandWord,
   sanitizeCodexResult,
-  makeSpecializedTerms
+  makeSpecializedTerms,
+  defaultFollowUpQuestions
 } = require("../apps/server/src/codexAdapter");
 const { isPidAlive } = require("../apps/mac-runner/CodexReaderRunner");
 const { Readable } = require("node:stream");
@@ -157,8 +158,15 @@ test("analysis prompt asks Codex for web-informed follow-up prompts", () => {
     text: "A report argues demand growth will accelerate after a product launch."
   });
   assert.match(prompt, /Use web search to strengthen Follow-up Questions only/);
+  assert.match(prompt, /Summary requirement: write the Summary field as 5 to 8 sentences/);
+  assert.match(prompt, /gaejo-sik style/);
+  assert.match(prompt, /개조식/);
+  assert.match(prompt, /명사형 종결어미/);
+  assert.match(prompt, /noun-form endings/);
   assert.match(prompt, /Output language for Follow-up Questions: Korean/);
-  assert.match(prompt, /thought experiments/);
+  assert.match(prompt, /logical errors, contradictions, or internal tensions/);
+  assert.match(prompt, /Devil's Advocate perspective/);
+  assert.match(prompt, /middle-school-level explanation/);
   assert.doesNotMatch(prompt, /\*\*/);
 });
 
@@ -171,6 +179,7 @@ test("manual prompts include summary context and selected output language", () =
     surrounding_text: "The report reiterates an overweight rating and price target."
   });
   assert.match(prompt, /Output language: Korean/);
+  assert.match(prompt, /gaejo-sik style/);
   assert.match(prompt, /Automatically extracted summary for context/);
   assert.match(prompt, /Demand is expected to accelerate/);
   assert.doesNotMatch(prompt, /right-sidebar/);
@@ -187,8 +196,22 @@ test("follow-up answer prompt uses search, full text, and language", () => {
   });
   assert.equal(args.includes("--search"), true);
   assert.match(prompt, /Output language: English/);
+  assert.match(prompt, /itemized phrases/);
   assert.match(prompt, /Full extracted document text/);
   assert.match(prompt, /Use web search/);
+});
+
+test("default follow-up questions match requested baseline", () => {
+  assert.deepEqual(defaultFollowUpQuestions("Korean"), [
+    "전체 내용에서 논리적 오류 또는 상충되는 부분을 찾아 객관적으로 설명해주세요",
+    "Devil's Advocate 관점에서 이 내용의 주요 내용을 하나하나 반박해주세요",
+    "전체 내용을 중학생이 이해할 수 있는 수준으로 쉽게 설명해주세요"
+  ]);
+  assert.deepEqual(defaultFollowUpQuestions("English"), [
+    "Find any logical errors or contradictions in the whole content and explain them objectively.",
+    "From a Devil's Advocate perspective, rebut the main points of this content one by one.",
+    "Explain the whole content simply at a level a middle-school student can understand."
+  ]);
 });
 
 test("current process is not treated as duplicate runner", () => {

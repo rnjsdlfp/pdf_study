@@ -248,6 +248,7 @@ function buildPrompt(jobType, context) {
   const text = truncate(context.text || context.selection_text || "", jobType === JOB_TYPES.DOCUMENT_ANALYSIS ? 80000 : 12000);
   const outputLanguage = normalizeOutputLanguage(context.output_language);
   const summaryContext = truncate(context.summary_context || "", 3000) || "No analyzed summary is available yet.";
+  const outputStyle = outputStyleInstruction(outputLanguage);
 
   if (jobType === JOB_TYPES.SELECTION_FACT_CHECK) {
     return [
@@ -256,8 +257,9 @@ function buildPrompt(jobType, context) {
         date +
         '","relevance":"high|medium|low"}],"caveats":["string"],"confidence":"high|medium|low"}',
       `Output language: ${outputLanguage}. Write every human-readable string value in ${outputLanguage}, including explanation_ko and caveats, even when a field name contains a language suffix.`,
+      outputStyle,
       "Treat the user-provided text as the exact claim or claim bundle to verify. Use the summary and document context only to understand wording, entities, dates, and units.",
-      "Use web search. Cite external sources. If the claim cannot be checked, use not_checkable. Use plain text only. Do not use Markdown, bold markers, headings, or double-asterisk emphasis markers anywhere in string values.",
+      "Use web search. Cite external sources. If the claim cannot be checked, use not_checkable. Use plain text only. Do not use Markdown tables, headings, bold markers, or double-asterisk emphasis markers anywhere in string values.",
       `Document title: ${context.document_title || "Untitled"}`,
       `Automatically extracted summary for context:\n${summaryContext}`,
       `Claim or manual fact-check target:\n${text}`,
@@ -270,8 +272,9 @@ function buildPrompt(jobType, context) {
       "Return JSON only, matching this schema:",
       '{"explanation_original":"string","explanation_ko":"string","terms":[{"term":"string","definition_original":"string","definition_ko":"string"}],"translation_ko":"string","follow_up_questions":["string"]}',
       `Output language: ${outputLanguage}. Write every human-readable string value in ${outputLanguage}, including explanation_original, explanation_ko, definition fields, translation_ko, and follow_up_questions, even when a field name contains a language suffix.`,
+      outputStyle,
       "Explain the exact user-provided target text. Use the summary and surrounding context only to disambiguate the target, connect it to the document, and avoid overexplaining unrelated material.",
-      "Do not use web search. Use plain text only. Do not use Markdown, bold markers, headings, or double-asterisk emphasis markers anywhere in string values.",
+      "Do not use web search. Use plain text only. Do not use Markdown tables, headings, bold markers, or double-asterisk emphasis markers anywhere in string values.",
       termSelectionInstruction(5),
       `Document title: ${context.document_title || "Untitled"}`,
       `Automatically extracted summary for context:\n${summaryContext}`,
@@ -287,9 +290,10 @@ function buildPrompt(jobType, context) {
         date +
         '","relevance":"high|medium|low"}],"caveats":["string"]}',
       `Output language: ${outputLanguage}. Write every human-readable string value in ${outputLanguage}.`,
+      outputStyle,
       "Use web search and the full extracted document text. Answer the clicked follow-up question directly, then connect the answer back to the document's thesis, evidence, and uncertainties.",
       "Use the full extracted text as context and background knowledge, not as a quote dump. Prefer concise reasoning, useful caveats, and external sources that materially improve the answer.",
-      "Use plain text only. Do not use Markdown, bold markers, headings, bullet syntax, or double-asterisk emphasis markers anywhere in string values.",
+      "Use plain text only. Do not use Markdown tables, headings, bold markers, or double-asterisk emphasis markers anywhere in string values.",
       `Document title: ${context.document_title || "Untitled"}`,
       `Automatically extracted summary for context:\n${summaryContext}`,
       `Clicked follow-up question:\n${text}`,
@@ -299,13 +303,16 @@ function buildPrompt(jobType, context) {
 
   return [
     "Return JSON only, matching this schema:",
-    '{"summary_original":"string","summary_ko":"string","terms":[{"term":"string","definition_original":"string","definition_ko":"string"}],"follow_up_questions_original":["string"],"follow_up_questions_ko":["string"],"full_text_translation_ko":"string","translation_ko":"string","sources":[]}',
+    '{"summary_original":"string","summary_ko":"string","terms":[{"term":"string","definition_original":"string","definition_ko":"string"}],"follow_up_questions_original":["string"],"follow_up_questions_ko":["string"],"follow_up_questions":["string"],"full_text_translation_ko":"string","translation_ko":"string","sources":[]}',
     "Use Codex CLI reasoning for every field. Analyze the source text in the source language for summary_original, definition_original, and follow_up_questions_original. Put Korean only in summary_ko, definition_ko, follow_up_questions_ko, full_text_translation_ko, and translation_ko.",
-    "translation_ko must be the same value as full_text_translation_ko for backward compatibility. full_text_translation_ko should translate the provided extracted body text, preserving page cues and important numbers. Keep Summary and Terms concise and useful for research reading.",
+    `Output language: ${outputLanguage}. Write summary_original, summary_ko, follow_up_questions_original, follow_up_questions_ko, and follow_up_questions in ${outputLanguage}, even when a field name contains a language suffix.`,
+    outputStyle,
+    "Summary requirement: write the Summary field as 5 to 8 sentences. Keep it concise, but include the central thesis, key evidence, important numbers or dates, assumptions, and main caveats.",
+    "translation_ko must be the same value as full_text_translation_ko for backward compatibility. full_text_translation_ko should translate the provided extracted body text, preserving page cues and important numbers. Keep Terms concise and useful for research reading.",
     "Use web search to strengthen Follow-up Questions only: ground the questions in the extracted text, current public context, and plausible counter-evidence. Do not turn follow-up questions into a source list.",
     `Output language for Follow-up Questions: ${outputLanguage}. Write follow_up_questions_original, follow_up_questions_ko, and follow_up_questions in ${outputLanguage}.`,
-    followUpQuestionsInstruction(),
-    "Use plain text only. Do not use Markdown, bold markers, headings, bullet syntax, or double-asterisk emphasis markers anywhere in string values.",
+    followUpQuestionsInstruction(outputLanguage, jobType),
+    "Use plain text only. Do not use Markdown tables, headings, bold markers, or double-asterisk emphasis markers anywhere in string values.",
     termSelectionInstruction(10),
     `Analysis scope: ${jobType}`,
     `Document title: ${context.document_title || "Untitled"}`,
@@ -334,12 +341,48 @@ function normalizeOutputLanguage(value) {
   return /^ko|korean$/i.test(String(value || "")) ? "Korean" : "English";
 }
 
-function followUpQuestionsInstruction() {
+function outputStyleInstruction(outputLanguage) {
+  const koreanClause =
+    outputLanguage === "Korean"
+      ? 'For Korean output, end most points with noun-form endings such as "-함", "-필요", "-가능성", "-근거", "-한계", or "-의미" instead of polite sentence endings.'
+      : "For English output, prefer concise itemized phrases and nominal wording where natural.";
   return [
-    "Follow-up Questions criteria: create a diverse set of research prompts, not generic study questions.",
-    "Include prompts for deeper understanding of the topic, questions that challenge or invert the document's assumptions, questions that seek missing evidence, and thought experiments that develop the idea further.",
-    "Prefer questions that would help an analyst test causal claims, quantify uncertainty, compare alternative explanations, or decide what to investigate next."
+    "Output style: keep the core content concise, clear, and itemized in gaejo-sik style (개조식).",
+    "Prefer short point-by-point lines over long paragraphs when a field contains multiple ideas.",
+    "For Korean, this means using noun-form sentence endings (명사형 종결어미) where natural.",
+    koreanClause
   ].join(" ");
+}
+
+function followUpQuestionsInstruction(outputLanguage, jobType) {
+  const scopeText =
+    jobType === JOB_TYPES.PAGE_ANALYSIS
+      ? "Adapt each question to the current page only."
+      : "Adapt each question to the full analyzed document.";
+  const defaults = defaultFollowUpQuestions(outputLanguage);
+  return [
+    "Follow-up Questions criteria: return exactly three questions, based on these default question intents.",
+    scopeText,
+    "Question 1 must ask for objective logical errors, contradictions, or internal tensions.",
+    "Question 2 must use a Devil's Advocate perspective to rebut the main points one by one.",
+    "Question 3 must ask for a simple middle-school-level explanation of the analyzed content.",
+    `Default question wording:\n1. ${defaults[0]}\n2. ${defaults[1]}\n3. ${defaults[2]}`
+  ].join(" ");
+}
+
+function defaultFollowUpQuestions(outputLanguage = "Korean") {
+  if (normalizeOutputLanguage(outputLanguage) === "English") {
+    return [
+      "Find any logical errors or contradictions in the whole content and explain them objectively.",
+      "From a Devil's Advocate perspective, rebut the main points of this content one by one.",
+      "Explain the whole content simply at a level a middle-school student can understand."
+    ];
+  }
+  return [
+    "전체 내용에서 논리적 오류 또는 상충되는 부분을 찾아 객관적으로 설명해주세요",
+    "Devil's Advocate 관점에서 이 내용의 주요 내용을 하나하나 반박해주세요",
+    "전체 내용을 중학생이 이해할 수 있는 수준으로 쉽게 설명해주세요"
+  ];
 }
 
 function sanitizeCodexResult(value) {
@@ -475,7 +518,7 @@ function makeOriginalSummary(text) {
   if (!text) {
     return "No extracted text is available.";
   }
-  const sentences = text.split(/(?<=[.!?。！？])\s+|\n+/).filter(Boolean).slice(0, 3);
+  const sentences = text.split(/(?<=[.!?。！？])\s+|\n+/).filter(Boolean).slice(0, 8);
   return sentences.join(" ") || text.slice(0, 280);
 }
 
@@ -483,7 +526,7 @@ function makeSummary(text) {
   if (!text) {
     return "분석할 추출 텍스트가 없습니다. 스캔 PDF라면 OCR이 필요합니다.";
   }
-  const sentences = text.split(/(?<=[.!?。！？])\s+|\n+/).filter(Boolean).slice(0, 3);
+  const sentences = text.split(/(?<=[.!?。！？])\s+|\n+/).filter(Boolean).slice(0, 8);
   return `핵심 내용은 ${sentences.join(" ")}${sentences.length ? "" : text.slice(0, 280)}`;
 }
 
@@ -572,45 +615,7 @@ function makeTranslationNote(text) {
 }
 
 function makeQuestions(text, selection) {
-  const numberLike = /\d/.test(text);
-  const contractLike = /agreement|contract|shall|termination|liability|계약|해지|손해/i.test(text);
-  const policyLike = /policy|regulation|law|effective|compliance|정책|법|시행/i.test(text);
-
-  if (contractLike) {
-    return [
-      "이 조항에서 의무를 지는 당사자는 누구인가?",
-      "해지권, 동의권, 손해배상 범위가 어디까지 열려 있는가?",
-      "예외 조항이나 통지 기한이 다른 조항과 충돌하지 않는가?"
-    ];
-  }
-
-  if (policyLike) {
-    return [
-      "이 문서의 적용 범위와 시행일은 무엇인가?",
-      "법적 근거 또는 상위 규정은 무엇인가?",
-      "예외 대상이나 과도기 조항이 있는가?"
-    ];
-  }
-
-  if (numberLike) {
-    return [
-      "이 수치의 기준일과 산정 방식은 무엇인가?",
-      "원문에서 출처 또는 표본 조건을 확인할 수 있는가?",
-      "같은 지표를 반박할 수 있는 다른 기준은 무엇인가?"
-    ];
-  }
-
-  return selection
-    ? [
-        "이 문장의 핵심 전제는 무엇인가?",
-        "앞뒤 문맥과 연결하면 해석이 달라지는가?",
-        "이 용어가 문서 앞부분의 정의와 일치하는가?"
-      ]
-    : [
-        "문서 전체의 핵심 주장과 근거는 무엇인가?",
-        "중요한 용어가 어디에서 처음 정의되는가?",
-        "추가 검증이 필요한 수치나 최신 정보가 있는가?"
-      ];
+  return defaultFollowUpQuestions("Korean");
 }
 
 function truncate(value, max) {
@@ -629,5 +634,6 @@ module.exports = {
   sanitizeCodexResult,
   stripMarkdownOutputMarkers,
   makeSpecializedTerms,
+  defaultFollowUpQuestions,
   fallbackResult
 };

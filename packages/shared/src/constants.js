@@ -1,4 +1,4 @@
-const PROMPT_VERSION = "2026-07-03-language-followup-answer";
+const PROMPT_VERSION = "2026-07-03-default-followup-style";
 const SCHEMA_VERSION = "3";
 
 const JOB_TYPES = Object.freeze({
