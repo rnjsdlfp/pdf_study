@@ -154,17 +154,18 @@ register_tunnel_url() {
   local response
   local exit_code
   payload="$(node -e 'console.log(JSON.stringify({ apiBase: process.argv[1] }))' "$url")"
+  log_tunnel "Registering tunnel with discovery service: $url"
   if response="$(curl -fsS --connect-timeout 5 --max-time "$REGISTER_CURL_MAX_TIME" -X POST -H "Content-Type: application/json" --data "$payload" "$DISCOVERY_URL/register" 2>&1)"; then
     printf '%s\n' "$response" >> "$TUNNEL_LOG"
     if node -e 'const payload = JSON.parse(process.argv[1]); process.exit(payload && payload.ok === true ? 0 : 1);' "$response" >/dev/null 2>&1; then
-      printf '\n[%s] Registered tunnel with discovery service: %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$DISCOVERY_URL" >> "$TUNNEL_LOG"
+      log_tunnel "Registered tunnel with discovery service: $DISCOVERY_URL"
       return 0
     fi
-    printf '\n[%s] Discovery registration returned non-ok response: %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$response" >> "$TUNNEL_LOG"
+    log_tunnel "Discovery registration returned non-ok response: $response"
     return 1
   else
     exit_code=$?
-    printf '\n[%s] Discovery registration failed: %s (curl exit %s)\n%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$DISCOVERY_URL" "$exit_code" "$response" >> "$TUNNEL_LOG"
+    log_tunnel "Discovery registration failed: $DISCOVERY_URL (curl exit $exit_code) $response"
     return 1
   fi
 }
@@ -304,14 +305,15 @@ for _ in $(seq 1 45); do
     if [ -n "$TUNNEL_URL" ]; then
       log_tunnel "Detected public tunnel URL: $TUNNEL_URL"
       write_status false "$TUNNEL_PID" "$TUNNEL_URL"
-      if register_tunnel_url "$TUNNEL_URL"; then
-        log_tunnel "Discovery service confirmed public tunnel health"
-        write_status true "$TUNNEL_PID" "$TUNNEL_URL"
-        open_pages "$TUNNEL_URL"
-        notify "Codex Reader Tunnel" "Tunnel is online at $TUNNEL_URL"
-        keep_tunnel_running "$TUNNEL_URL"
-      fi
     fi
+  fi
+
+  if [ -n "$TUNNEL_URL" ] && register_tunnel_url "$TUNNEL_URL"; then
+    log_tunnel "Discovery service confirmed public tunnel health"
+    write_status true "$TUNNEL_PID" "$TUNNEL_URL"
+    open_pages "$TUNNEL_URL"
+    notify "Codex Reader Tunnel" "Tunnel is online at $TUNNEL_URL"
+    keep_tunnel_running "$TUNNEL_URL"
   fi
 
   if [ -n "$TUNNEL_URL" ] && http_ok "$TUNNEL_URL/health" "$PUBLIC_CURL_MAX_TIME"; then
