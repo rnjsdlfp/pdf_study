@@ -10,7 +10,7 @@ const {
   validateSelectionText
 } = require("../../../packages/shared/src");
 const { parseMultipart } = require("./multipart");
-const { extractPdf } = require("./pdfExtractor");
+const { extractPdf, isLikelyExtractedText } = require("./pdfExtractor");
 const { extractWebpage } = require("./webpageExtractor");
 const { safeJson } = require("./store");
 const { assertInside } = require("./runtime");
@@ -172,7 +172,7 @@ function createApp({ config, paths, store, eventHub, codexAdapter, worker, logge
 
     const documentMatch = url.pathname.match(/^\/api\/documents\/([^/]+)$/);
     if (request.method === "GET" && documentMatch) {
-      const document = requireDocument(documentMatch[1]);
+      const document = refreshPdfExtractionIfNeeded(requireDocument(documentMatch[1]));
       sendJson(response, 200, { document, pages: store.getPages(document.id) });
       return;
     }
@@ -337,6 +337,45 @@ function createApp({ config, paths, store, eventHub, codexAdapter, worker, logge
       throw httpError(404, "Document not found.");
     }
     return document;
+  }
+
+  function refreshPdfExtractionIfNeeded(document) {
+    if (document.source_type !== "pdf" || !document.local_path) {
+      return document;
+    }
+
+    const pages = store.getPages(document.id);
+    const currentText = pages.map((page) => page.text || "").join("\n\n");
+    if (!currentText && document.status === "needs_ocr") {
+      return document;
+    }
+    if (currentText && isLikelyExtractedText(currentText)) {
+      return document;
+    }
+
+    try {
+      const filePath = assertInside(paths.uploadsDir, document.local_path);
+      if (!fs.existsSync(filePath)) {
+        return document;
+      }
+
+      const extracted = extractPdf(fs.readFileSync(filePath));
+      return store.replaceDocumentPages(
+        document.id,
+        {
+          page_count: extracted.pageCount,
+          status: extracted.status,
+          status_message: extracted.statusMessage
+        },
+        extracted.pages
+      ) || document;
+    } catch (error) {
+      logger.warn("PDF re-extraction skipped.", {
+        documentId: document.id,
+        error: error.message
+      });
+      return document;
+    }
   }
 
   return server;

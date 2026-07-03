@@ -112,8 +112,8 @@ function buildPrompt(jobType, context) {
   if (jobType === JOB_TYPES.SELECTION_EXPLAIN) {
     return [
       "Return JSON only, matching this schema:",
-      '{"explanation_ko":"string","terms":[{"term":"string","definition_ko":"string"}],"translation_ko":"string","follow_up_questions":["string"]}',
-      "Explain the selected passage in easy Korean. Do not use web search.",
+      '{"explanation_original":"string","explanation_ko":"string","terms":[{"term":"string","definition_original":"string","definition_ko":"string"}],"translation_ko":"string","follow_up_questions":["string"]}',
+      "Use the source document language for explanation_original and definition_original. Put Korean only in explanation_ko, definition_ko, and translation_ko. Do not use web search.",
       `Document title: ${context.document_title || "Untitled"}`,
       `Selected text:\n${text}`,
       `Surrounding context:\n${truncate(context.surrounding_text || "", 4000)}`
@@ -122,8 +122,8 @@ function buildPrompt(jobType, context) {
 
   return [
     "Return JSON only, matching this schema:",
-    '{"summary_ko":"string","terms":[{"term":"string","definition_ko":"string"}],"translation_ko":"string","follow_up_questions":["string"],"sources":[]}',
-    "Analyze the document text in Korean. Do not use web search. Keep output concise and useful for research reading.",
+    '{"summary_original":"string","summary_ko":"string","terms":[{"term":"string","definition_original":"string","definition_ko":"string"}],"translation_ko":"string","follow_up_questions":["string"],"sources":[]}',
+    "Analyze the document in the same language as the source text for summary_original and definition_original. Put Korean only in summary_ko, definition_ko, and translation_ko. Do not use web search. Keep output concise and useful for research reading.",
     `Analysis scope: ${jobType}`,
     `Document title: ${context.document_title || "Untitled"}`,
     `Text:\n${text}`
@@ -206,6 +206,7 @@ function fallbackResult(jobType, context, caveat) {
 
   if (jobType === JOB_TYPES.SELECTION_EXPLAIN) {
     return {
+      explanation_original: makeOriginalSummary(text),
       explanation_ko: `선택한 문장은 문서 안에서 다음 내용을 말합니다: ${makeSummary(text)}`,
       terms: makeTerms(text),
       translation_ko: makeTranslationNote(text),
@@ -215,6 +216,7 @@ function fallbackResult(jobType, context, caveat) {
   }
 
   return {
+    summary_original: makeOriginalSummary(text),
     summary_ko: makeSummary(text),
     terms: makeTerms(text),
     translation_ko: makeTranslationNote(text),
@@ -222,6 +224,14 @@ function fallbackResult(jobType, context, caveat) {
     sources: [],
     caveats: [caveat]
   };
+}
+
+function makeOriginalSummary(text) {
+  if (!text) {
+    return "No extracted text is available.";
+  }
+  const sentences = text.split(/(?<=[.!?。！？])\s+|\n+/).filter(Boolean).slice(0, 3);
+  return sentences.join(" ") || text.slice(0, 280);
 }
 
 function makeSummary(text) {
@@ -246,6 +256,7 @@ function makeTerms(text) {
     .slice(0, 6)
     .map((item) => ({
       term: item.term,
+      definition_original: "Repeated source-text term. Check the surrounding PDF context for the exact definition.",
       definition_ko: "문서에서 반복적으로 등장하는 핵심 후보 용어입니다. 정확한 정의는 원문 맥락에서 확인하세요."
     }));
 }

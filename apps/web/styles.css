@@ -215,6 +215,7 @@ svg {
 .workspace {
   display: grid;
   grid-template-columns: 244px minmax(0, 1fr) 360px;
+  height: calc(100vh - 64px);
   min-height: 0;
 }
 
@@ -277,14 +278,45 @@ svg {
   color: var(--text);
   text-align: left;
   border-radius: 8px;
-  padding: 10px;
-  cursor: pointer;
+  padding: 4px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 30px;
+  align-items: center;
+  gap: 4px;
 }
 
 .document-row:hover,
 .document-row.active {
   background: #fff;
   border-color: var(--line);
+}
+
+.document-open,
+.document-delete {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.document-open {
+  min-width: 0;
+  padding: 6px;
+  text-align: left;
+}
+
+.document-delete {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  color: var(--faint);
+}
+
+.document-delete:hover {
+  background: #fff1f0;
+  color: var(--red);
 }
 
 .document-row-title {
@@ -352,6 +384,10 @@ svg {
   background: #fff;
 }
 
+.viewer-grid.pdf-mode {
+  grid-template-rows: minmax(0, 1fr);
+}
+
 .pdf-preview {
   width: 100%;
   height: 100%;
@@ -363,6 +399,14 @@ svg {
 
 .pdf-preview.active {
   display: block;
+}
+
+.viewer-grid.pdf-mode .pdf-preview {
+  border-bottom: 0;
+}
+
+.viewer-grid.pdf-mode .reader-surface {
+  display: none;
 }
 
 .reader-surface {
@@ -460,6 +504,13 @@ mark {
   font-weight: 800;
   color: var(--text);
   margin-bottom: 10px;
+}
+
+.section-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .section-body,
@@ -566,6 +617,7 @@ mark {
 
   .workspace {
     grid-template-columns: 220px minmax(0, 1fr);
+    height: auto;
   }
 
   .analysis-pane {

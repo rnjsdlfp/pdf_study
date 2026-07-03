@@ -116,6 +116,67 @@ class JsonStore {
     return this.data.documents[id];
   }
 
+  replaceDocumentPages(id, patch, pages) {
+    const existing = this.data.documents[id];
+    if (!existing) {
+      return null;
+    }
+
+    const updatedAt = nowIso();
+    this.data.documents[id] = {
+      ...existing,
+      ...patch,
+      page_count: patch.page_count || pages.length || existing.page_count || 1,
+      updated_at: updatedAt
+    };
+
+    for (const key of Object.keys(this.data.pages)) {
+      if (this.data.pages[key].document_id === id) {
+        delete this.data.pages[key];
+      }
+    }
+
+    const removedJobIds = new Set();
+    for (const key of Object.keys(this.data.selections)) {
+      if (this.data.selections[key].document_id === id) {
+        delete this.data.selections[key];
+      }
+    }
+    for (const key of Object.keys(this.data.jobs)) {
+      if (this.data.jobs[key].document_id === id) {
+        removedJobIds.add(key);
+        delete this.data.jobs[key];
+      }
+    }
+    for (const key of Object.keys(this.data.analysis_cache)) {
+      if (this.data.analysis_cache[key].document_id === id) {
+        delete this.data.analysis_cache[key];
+      }
+    }
+    for (const key of Object.keys(this.data.sources)) {
+      if (removedJobIds.has(this.data.sources[key].job_id)) {
+        delete this.data.sources[key];
+      }
+    }
+
+    pages.forEach((page, index) => {
+      const pageNumber = page.page_number || index + 1;
+      this.data.pages[`${id}:${pageNumber}`] = {
+        id: this.createId("page"),
+        document_id: id,
+        page_number: pageNumber,
+        text: page.text || "",
+        text_hash: page.text_hash || "",
+        extraction_confidence: page.extraction_confidence || "medium",
+        created_at: updatedAt,
+        updated_at: updatedAt
+      };
+    });
+
+    this.save();
+    return this.data.documents[id];
+  }
+
   getDocument(id) {
     return this.data.documents[id] || null;
   }

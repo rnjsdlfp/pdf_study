@@ -6,6 +6,7 @@ const state = {
   selectedText: "",
   selectedRange: null,
   zoom: 1,
+  showKoreanTranslation: false,
   analysis: [],
   selectionJobs: [],
   eventSources: new Map()
@@ -34,16 +35,17 @@ const els = {
   zoomOutButton: document.getElementById("zoomOutButton"),
   zoomInButton: document.getElementById("zoomInButton"),
   pdfPreview: document.getElementById("pdfPreview"),
+  viewerGrid: document.querySelector(".viewer-grid"),
   readerSurface: document.getElementById("readerSurface"),
   selectionPopup: document.getElementById("selectionPopup"),
   explainButton: document.getElementById("explainButton"),
   factCheckButton: document.getElementById("factCheckButton"),
+  translateButton: document.getElementById("translateButton"),
   summarySection: document.getElementById("summarySection"),
   termsSection: document.getElementById("termsSection"),
   translationSection: document.getElementById("translationSection"),
   questionsSection: document.getElementById("questionsSection"),
   selectionJobsSection: document.getElementById("selectionJobsSection"),
-  sourcesSection: document.getElementById("sourcesSection"),
   toastStack: document.getElementById("toastStack")
 };
 
@@ -105,6 +107,10 @@ function bindEvents() {
 
   els.explainButton.addEventListener("click", () => createSelectionJob("explain"));
   els.factCheckButton.addEventListener("click", () => createSelectionJob("fact_check"));
+  els.translateButton.addEventListener("click", () => {
+    state.showKoreanTranslation = !state.showKoreanTranslation;
+    renderAnalysisPanel();
+  });
 }
 
 async function api(path, options = {}) {
@@ -176,15 +182,22 @@ async function loadDocuments() {
 function renderDocuments() {
   els.documentList.innerHTML = "";
   for (const documentRecord of state.documents) {
-    const button = document.createElement("button");
-    button.className = `document-row ${state.currentDocument?.id === documentRecord.id ? "active" : ""}`;
-    button.type = "button";
-    button.innerHTML = `
-      <div class="document-row-title">${escapeHtml(documentRecord.title)}</div>
-      <div class="document-row-meta">${escapeHtml(documentRecord.source_type)} · ${documentRecord.page_count || 1} page</div>
+    const row = document.createElement("div");
+    row.className = `document-row ${state.currentDocument?.id === documentRecord.id ? "active" : ""}`;
+    row.innerHTML = `
+      <button class="document-open" type="button">
+        <div class="document-row-title">${escapeHtml(documentRecord.title)}</div>
+        <div class="document-row-meta">${escapeHtml(documentRecord.source_type)} - ${documentRecord.page_count || 1} page</div>
+      </button>
+      <button class="document-delete" type="button" title="Delete document" aria-label="Delete ${escapeAttribute(documentRecord.title)}">
+        <svg viewBox="0 0 24 24"><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M10 11v6" /><path d="M14 11v6" /><path d="M6 6l1 15h10l1-15" /></svg>
+      </button>
     `;
-    button.addEventListener("click", () => selectDocument(documentRecord.id));
-    els.documentList.appendChild(button);
+    row.querySelector(".document-open").addEventListener("click", () => selectDocument(documentRecord.id));
+    row.querySelector(".document-delete").addEventListener("click", (event) =>
+      deleteDocument(documentRecord.id, documentRecord.title, event)
+    );
+    els.documentList.appendChild(row);
   }
 }
 
@@ -193,12 +206,40 @@ async function selectDocument(documentId) {
   state.currentDocument = payload.document;
   state.pages = payload.pages || [];
   state.currentPage = 1;
+  state.showKoreanTranslation = false;
   els.documentTitle.textContent = state.currentDocument.title;
   els.analyzePageButton.disabled = false;
   els.analyzeDocumentButton.disabled = false;
   renderDocuments();
   renderReader();
   await refreshPanels();
+}
+
+async function deleteDocument(documentId, title, event) {
+  event.stopPropagation();
+  if (!window.confirm(`Delete "${title}"?`)) {
+    return;
+  }
+
+  try {
+    await api(`/api/documents/${documentId}`, { method: "DELETE" });
+    toast("Document deleted.");
+    if (state.currentDocument?.id === documentId) {
+      state.currentDocument = null;
+      state.pages = [];
+      state.currentPage = 1;
+      state.analysis = [];
+      state.selectionJobs = [];
+      els.documentTitle.textContent = "No document selected";
+    }
+    await loadDocuments();
+    if (!state.currentDocument) {
+      renderReader();
+      renderAnalysisPanel();
+    }
+  } catch (error) {
+    toast(error.message);
+  }
 }
 
 function setPage(pageNumber) {
@@ -249,6 +290,7 @@ async function importWebpage(url) {
 function renderReader() {
   const doc = state.currentDocument;
   if (!doc) {
+    els.viewerGrid.classList.remove("pdf-mode");
     els.readerSurface.innerHTML = `
       <div class="empty-state">
         <div class="empty-mark" aria-hidden="true"></div>
@@ -269,9 +311,13 @@ function renderReader() {
   els.nextPageButton.disabled = state.currentPage >= pageCount;
 
   if (doc.source_type === "pdf" && doc.local_path) {
+    els.viewerGrid.classList.add("pdf-mode");
     els.pdfPreview.classList.add("active");
     els.pdfPreview.src = `${apiUrl(`/api/documents/${doc.id}/file`)}#page=${state.currentPage}`;
+    els.readerSurface.innerHTML = "";
+    return;
   } else {
+    els.viewerGrid.classList.remove("pdf-mode");
     els.pdfPreview.classList.remove("active");
     els.pdfPreview.removeAttribute("src");
   }
@@ -279,7 +325,7 @@ function renderReader() {
   const text = page?.text || doc.status_message || "No extracted text available.";
   const highlighted = highlight(escapeHtml(text), escapeHtml(els.searchInput.value.trim()));
   els.readerSurface.innerHTML = `
-    <div class="page-label">${escapeHtml(doc.source_type)} · ${escapeHtml(doc.status || "ready")}</div>
+    <div class="page-label">${escapeHtml(doc.source_type)} - ${escapeHtml(doc.status || "ready")}</div>
     <div class="page-text" data-page="${state.currentPage}">${highlighted}</div>
   `;
 }
@@ -408,33 +454,52 @@ async function refreshSelectionJobs() {
 
 function renderAnalysisPanel() {
   const latest = state.analysis[0]?.result || null;
-  els.summarySection.textContent = latest?.summary_ko || state.currentDocument?.status_message || "Ready to analyze";
+  els.summarySection.textContent =
+    latest?.summary_original ||
+    latest?.summary ||
+    latest?.summary_ko ||
+    state.currentDocument?.status_message ||
+    "Ready to analyze";
 
   els.termsSection.innerHTML = "";
   for (const term of latest?.terms || []) {
     const item = document.createElement("div");
     item.className = "term-item";
-    item.innerHTML = `<strong>${escapeHtml(term.term || "Term")}</strong>${escapeHtml(term.definition_ko || "")}`;
+    item.innerHTML = `<strong>${escapeHtml(term.term || "Term")}</strong>${escapeHtml(
+      term.definition_original || term.definition || term.definition_ko || ""
+    )}`;
     els.termsSection.appendChild(item);
   }
 
-  els.translationSection.textContent = latest?.translation_ko || "";
+  const koreanText = latest?.translation_ko || latest?.summary_ko || latest?.explanation_ko || "";
+  els.translateButton.disabled = !koreanText;
+  els.translateButton.textContent = state.showKoreanTranslation ? "Hide Korean" : "Translate Korean";
+  els.translationSection.textContent = state.showKoreanTranslation
+    ? koreanText
+    : latest
+      ? "Showing source language. Use Translate Korean for Korean."
+      : "Run Analyze Document to generate translation.";
+
   els.questionsSection.innerHTML = "";
-  for (const question of latest?.follow_up_questions || defaultQuestions()) {
+  const questions = latest?.follow_up_questions || [];
+  if (questions.length === 0) {
+    const item = document.createElement("li");
+    item.textContent = latest ? "No follow-up questions returned." : "Run Analyze Document to generate questions.";
+    els.questionsSection.appendChild(item);
+  }
+  for (const question of questions) {
     const item = document.createElement("li");
     item.textContent = question;
     els.questionsSection.appendChild(item);
   }
 
   renderSelectionJobs();
-  renderSources();
 }
 
 function renderSelectionJobs() {
   els.selectionJobsSection.innerHTML = "";
   if (state.selectionJobs.length === 0) {
     els.selectionJobsSection.textContent = "No selection jobs";
-    renderSources();
     return;
   }
 
@@ -450,7 +515,6 @@ function renderSelectionJobs() {
     `;
     els.selectionJobsSection.appendChild(item);
   }
-  renderSources();
 }
 
 function renderJobResult(type, result) {
@@ -460,26 +524,7 @@ function renderJobResult(type, result) {
   if (type === "selection_fact_check") {
     return `<div><strong>${escapeHtml(result.verdict || "unclear")}</strong>${escapeHtml(result.explanation_ko || "")}</div>`;
   }
-  return `<div>${escapeHtml(result.explanation_ko || result.summary_ko || "")}</div>`;
-}
-
-function renderSources() {
-  els.sourcesSection.innerHTML = "";
-  const sources = state.selectionJobs.flatMap((job) => job.result?.sources || []);
-  if (sources.length === 0) {
-    els.sourcesSection.textContent = "No external sources";
-    return;
-  }
-  for (const source of sources) {
-    const item = document.createElement("div");
-    item.className = "source-item";
-    item.innerHTML = `
-      <strong>${escapeHtml(source.title || "Untitled source")}</strong>
-      <a href="${escapeAttribute(source.url || "#")}" target="_blank" rel="noreferrer">${escapeHtml(source.url || "")}</a>
-      <div>${escapeHtml([source.publisher, source.published_date, source.accessed_date, source.relevance].filter(Boolean).join(" · "))}</div>
-    `;
-    els.sourcesSection.appendChild(item);
-  }
+  return `<div>${escapeHtml(result.explanation_original || result.explanation_ko || result.summary_original || result.summary_ko || "")}</div>`;
 }
 
 function highlight(html, query) {
@@ -496,14 +541,6 @@ function surrounding(text, selection) {
     return text.slice(0, 1400);
   }
   return text.slice(Math.max(0, index - 700), Math.min(text.length, index + selection.length + 700));
-}
-
-function defaultQuestions() {
-  return [
-    "What is the core premise of this passage?",
-    "Which dates, numbers, or sources need checking?",
-    "Does this term match its earlier definition?"
-  ];
 }
 
 function toast(message) {

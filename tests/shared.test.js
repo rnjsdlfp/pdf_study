@@ -8,7 +8,10 @@ const {
 } = require("../packages/shared/src");
 const {
   decodePdfToken,
+  decodeWithCMap,
+  parseCMap,
   normalizeText,
+  isLikelyExtractedText,
   stripPdfBoilerplate,
   isBoilerplateParagraph
 } = require("../apps/server/src/pdfExtractor");
@@ -60,6 +63,22 @@ test("PDF boilerplate filtering removes disclaimers and keeps content", () => {
   assert.equal(cleaned.removedCount, 2);
   assert.equal(isBoilerplateParagraph("Copyright 2026 Example Corp. All rights reserved."), true);
   assert.equal(isBoilerplateParagraph("This section explains warranty obligations in the contract."), false);
+});
+
+test("PDF ToUnicode CMap decoding restores encoded glyphs", () => {
+  const cmap = parseCMap(
+    [
+      "1 beginbfchar",
+      "<0003><0020>",
+      "endbfchar",
+      "1 beginbfrange",
+      "<0004><0006><0041>",
+      "endbfrange"
+    ].join("\n")
+  );
+  assert.equal(decodeWithCMap("0004000500060003", cmap), "ABC ");
+  assert.equal(isLikelyExtractedText("endstream\nendobj\n<< /Type /Page >>"), false);
+  assert.equal(isLikelyExtractedText("Our Proprietary Data Points to Sharp Inflection"), true);
 });
 
 test("Codex JSON parser finds final JSON object", () => {
