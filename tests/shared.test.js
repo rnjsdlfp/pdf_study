@@ -88,11 +88,14 @@ test("Codex JSON parser finds final JSON object", () => {
   assert.equal(parsed.ok, true);
 });
 
-test("Codex command lookup includes explicit and common macOS paths", () => {
+test("Codex command lookup includes explicit and common paths", () => {
   const candidates = codexCommandCandidates("/custom/bin/codex");
   assert.equal(candidates[0], "/custom/bin/codex");
   assert.equal(candidates.includes("codex") || candidates.includes("codex.cmd"), true);
   assert.equal(candidates.some((candidate) => /[\\/]opt[\\/]homebrew[\\/]bin[\\/]codex/.test(candidate)), true);
+  if (process.platform === "darwin") {
+    assert.equal(candidates.includes("/Applications/Codex.app/Contents/Resources/codex"), true);
+  }
 });
 
 test("current process is not treated as duplicate runner", () => {

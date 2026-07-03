@@ -52,9 +52,10 @@ For another device, such as an iPad or a different laptop, double-click `★Code
 codex --version
 codex exec --help
 command -v codex
+/Applications/Codex.app/Contents/Resources/codex --version
 ```
 
-If Terminal can find Codex but the web app still says `Codex CLI not found`, restart with the latest launcher or set `CODEX_READER_CODEX_COMMAND` to the absolute path printed by `command -v codex`.
+If Terminal can find Codex but the web app still says `Codex CLI not found`, restart with the latest launcher or set `CODEX_READER_CODEX_COMMAND` to the absolute path printed by `command -v codex`. The app also checks `/Applications/Codex.app/Contents/Resources/codex`.
 
 5. Optional: install launchd for login-time auto-start:
 

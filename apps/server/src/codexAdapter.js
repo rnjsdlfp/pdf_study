@@ -139,9 +139,21 @@ function codexCommandCandidates(explicit = "") {
   const candidates = [
     explicit,
     ...names,
-    ...commonBinDirs().flatMap((dir) => names.map((name) => path.join(dir, name)))
+    ...commonBinDirs().flatMap((dir) => names.map((name) => path.join(dir, name))),
+    ...bundledCodexCandidates()
   ];
   return uniqueList(candidates);
+}
+
+function bundledCodexCandidates() {
+  if (process.platform !== "darwin") {
+    return [];
+  }
+  const home = os.homedir();
+  return [
+    "/Applications/Codex.app/Contents/Resources/codex",
+    path.join(home, "Applications", "Codex.app", "Contents", "Resources", "codex")
+  ];
 }
 
 async function resolveFromLoginShell() {
