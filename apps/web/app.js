@@ -6,8 +6,10 @@ const state = {
   selectedText: "",
   selectedRange: null,
   zoom: 1,
-  showKoreanTranslation: false,
+  showKoreanSidebar: false,
+  analysisTab: "analysis",
   analysis: [],
+  analysisJobs: new Map(),
   selectionJobs: [],
   eventSources: new Map()
 };
@@ -21,7 +23,7 @@ const API_DISCOVERY_URL = normalizeApiBase(window.CODEX_READER_CONFIG?.discovery
 const APP_API_BASE_STORAGE_KEY = window.CODEX_READER_CONFIG?.apiBaseStorageKey || "codexReaderApiBaseV2";
 const FORCE_API_DISCOVERY = Boolean(window.CODEX_READER_CONFIG?.forceDiscovery);
 const PREFER_SAME_ORIGIN_API = Boolean(window.CODEX_READER_CONFIG?.preferSameOriginApi);
-const APP_BUILD_VERSION = "20260703-upload-fix";
+const APP_BUILD_VERSION = "20260703-analysis-tabs";
 let discoveryCheckedAt = 0;
 let discoveryPromise = null;
 let discoveryForcedOnce = false;
@@ -60,6 +62,15 @@ const els = {
   translationSection: document.getElementById("translationSection"),
   questionsSection: document.getElementById("questionsSection"),
   selectionJobsSection: document.getElementById("selectionJobsSection"),
+  analysisTabButton: document.getElementById("analysisTabButton"),
+  translationTabButton: document.getElementById("translationTabButton"),
+  analysisContent: document.getElementById("analysisContent"),
+  translationContent: document.getElementById("translationContent"),
+  analysisProgress: document.getElementById("analysisProgress"),
+  analysisProgressTitle: document.getElementById("analysisProgressTitle"),
+  analysisProgressPercent: document.getElementById("analysisProgressPercent"),
+  analysisProgressBar: document.getElementById("analysisProgressBar"),
+  analysisProgressMeta: document.getElementById("analysisProgressMeta"),
   toastStack: document.getElementById("toastStack")
 };
 
@@ -72,6 +83,7 @@ function init() {
   pollStatus();
   loadDocuments({ silentNetworkError: true });
   setInterval(pollStatus, 5000);
+  setInterval(renderAnalysisProgress, 3000);
 }
 
 function bindEvents() {
@@ -136,8 +148,10 @@ function bindEvents() {
 
   els.explainButton.addEventListener("click", () => createSelectionJob("explain"));
   els.factCheckButton.addEventListener("click", () => createSelectionJob("fact_check"));
+  els.analysisTabButton.addEventListener("click", () => setAnalysisTab("analysis"));
+  els.translationTabButton.addEventListener("click", () => setAnalysisTab("translation"));
   els.translateButton.addEventListener("click", () => {
-    state.showKoreanTranslation = !state.showKoreanTranslation;
+    state.showKoreanSidebar = !state.showKoreanSidebar;
     renderAnalysisPanel();
   });
 }
@@ -407,7 +421,8 @@ async function selectDocument(documentId) {
   state.currentDocument = payload.document;
   state.pages = payload.pages || [];
   state.currentPage = 1;
-  state.showKoreanTranslation = false;
+  state.showKoreanSidebar = false;
+  state.analysisTab = "analysis";
   els.documentTitle.textContent = state.currentDocument.title;
   els.analyzePageButton.disabled = false;
   els.analyzeDocumentButton.disabled = false;
@@ -430,6 +445,7 @@ async function deleteDocument(documentId, title, event) {
       state.pages = [];
       state.currentPage = 1;
       state.analysis = [];
+      state.analysisJobs = new Map();
       state.selectionJobs = [];
       els.documentTitle.textContent = "No document selected";
     }
@@ -539,6 +555,8 @@ async function createAnalysisJob(scope) {
     return;
   }
   try {
+    state.analysisTab = "analysis";
+    renderAnalysisPanel();
     const payload = await api(`/api/documents/${state.currentDocument.id}/analyze`, {
       method: "POST",
       body: JSON.stringify({
@@ -548,7 +566,11 @@ async function createAnalysisJob(scope) {
         end_page: state.currentDocument.page_count || 1
       })
     });
-    toast(scope === "page" ? "Page analysis queued." : "Document analysis queued.");
+    if (payload.job) {
+      state.analysisJobs.set(payload.job.id, payload.job);
+      renderAnalysisPanel();
+    }
+    toast(scope === "page" ? "Page analysis queued with Codex CLI." : "Document analysis queued with Codex CLI.");
     watchJob(payload.job.id);
   } catch (error) {
     toast(error.message);
@@ -617,11 +639,15 @@ function watchJob(jobId) {
   state.eventSources.set(jobId, source);
   source.addEventListener("job", async (event) => {
     const payload = JSON.parse(event.data);
+    if (payload.job && !payload.job.selection_id) {
+      state.analysisJobs.set(payload.job.id, payload.job);
+      renderAnalysisPanel();
+    }
     if (payload.job && ["done", "failed", "failed_schema", "cancelled"].includes(payload.job.status)) {
       source.close();
       state.eventSources.delete(jobId);
       await refreshPanels();
-    } else {
+    } else if (payload.job?.selection_id) {
       await refreshSelectionJobs();
     }
     pollStatus();
@@ -640,10 +666,14 @@ async function refreshPanels() {
 async function refreshAnalysis() {
   if (!state.currentDocument) {
     state.analysis = [];
+    state.analysisJobs = new Map();
     return;
   }
   const payload = await api(`/api/documents/${state.currentDocument.id}/analysis`);
   state.analysis = payload.analysis || [];
+  if (Array.isArray(payload.jobs)) {
+    state.analysisJobs = new Map(payload.jobs.map((job) => [job.id, job]));
+  }
 }
 
 async function refreshSelectionJobs() {
@@ -657,35 +687,34 @@ async function refreshSelectionJobs() {
 }
 
 function renderAnalysisPanel() {
-  const latest = state.analysis[0]?.result || null;
-  els.summarySection.textContent =
-    latest?.summary_original ||
-    latest?.summary ||
-    latest?.summary_ko ||
-    state.currentDocument?.status_message ||
-    "Ready to analyze";
+  renderAnalysisTabs();
+  renderAnalysisProgress();
+
+  const latestJob = state.analysis[0] || null;
+  const latest = latestJob?.result || null;
+  const useKorean = state.showKoreanSidebar;
+  els.summarySection.textContent = useKorean
+    ? latest?.summary_ko || latest?.summary_original || latest?.summary || state.currentDocument?.status_message || "Ready to analyze"
+    : latest?.summary_original || latest?.summary || latest?.summary_ko || state.currentDocument?.status_message || "Ready to analyze";
 
   els.termsSection.innerHTML = "";
   for (const term of latest?.terms || []) {
     const item = document.createElement("div");
     item.className = "term-item";
-    item.innerHTML = `<strong>${escapeHtml(term.term || "Term")}</strong>${escapeHtml(
-      term.definition_original || term.definition || term.definition_ko || ""
-    )}`;
+    const definition = useKorean
+      ? term.definition_ko || term.definition_original || term.definition || ""
+      : term.definition_original || term.definition || term.definition_ko || "";
+    item.innerHTML = `<strong>${escapeHtml(term.term || "Term")}</strong>${escapeHtml(definition)}`;
     els.termsSection.appendChild(item);
   }
-
-  const koreanText = latest?.translation_ko || latest?.summary_ko || latest?.explanation_ko || "";
-  els.translateButton.disabled = !koreanText;
-  els.translateButton.textContent = state.showKoreanTranslation ? "Hide Korean" : "Translate Korean";
-  els.translationSection.textContent = state.showKoreanTranslation
-    ? koreanText
-    : latest
-      ? "Showing source language. Use Translate Korean for Korean."
-      : "Run Analyze Document to generate translation.";
+  if (!latest?.terms?.length) {
+    els.termsSection.textContent = latest ? "No terms returned." : "Run Analyze Document to generate terms.";
+  }
 
   els.questionsSection.innerHTML = "";
-  const questions = latest?.follow_up_questions || [];
+  const questions = useKorean
+    ? latest?.follow_up_questions_ko || latest?.follow_up_questions || latest?.follow_up_questions_original || []
+    : latest?.follow_up_questions_original || latest?.follow_up_questions || latest?.follow_up_questions_ko || [];
   if (questions.length === 0) {
     const item = document.createElement("li");
     item.textContent = latest ? "No follow-up questions returned." : "Run Analyze Document to generate questions.";
@@ -697,7 +726,105 @@ function renderAnalysisPanel() {
     els.questionsSection.appendChild(item);
   }
 
+  els.translateButton.disabled = !latest;
+  els.translateButton.textContent = state.showKoreanSidebar ? "Show Original" : "Translate Korean";
+  els.translationSection.textContent = fullTextTranslation();
   renderSelectionJobs();
+}
+
+function renderAnalysisTabs() {
+  const translationActive = state.analysisTab === "translation";
+  els.analysisContent.hidden = translationActive;
+  els.translationContent.hidden = !translationActive;
+  els.analysisTabButton.classList.toggle("active", !translationActive);
+  els.translationTabButton.classList.toggle("active", translationActive);
+  els.analysisTabButton.setAttribute("aria-selected", String(!translationActive));
+  els.translationTabButton.setAttribute("aria-selected", String(translationActive));
+}
+
+function setAnalysisTab(tab) {
+  state.analysisTab = tab === "translation" ? "translation" : "analysis";
+  renderAnalysisPanel();
+}
+
+function fullTextTranslation() {
+  const documentJob = state.analysis.find((job) => job.type === "document_analysis" && job.result);
+  const result = (documentJob || state.analysis[0])?.result || null;
+  if (!result) {
+    return "Run Analyze Document to generate full-text translation.";
+  }
+  return result.full_text_translation_ko || result.translation_ko || "No full-text translation returned.";
+}
+
+function renderAnalysisProgress() {
+  const jobs = [...state.analysisJobs.values()].filter((job) => !job.selection_id);
+  const latestJob = jobs.sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")))[0];
+  if (!latestJob) {
+    els.analysisProgress.hidden = true;
+    return;
+  }
+
+  const progress = latestJob.progress || estimateClientProgress(latestJob);
+  const percent = Math.max(0, Math.min(100, Number(progress.percent || 0)));
+  els.analysisProgress.hidden = false;
+  els.analysisProgressTitle.textContent = progressTitle(latestJob);
+  els.analysisProgressPercent.textContent = `${percent}%`;
+  els.analysisProgressBar.style.width = `${percent}%`;
+  els.analysisProgressMeta.textContent = progressMeta(latestJob, progress);
+  els.analysisProgress.classList.toggle("done", latestJob.status === "done");
+  els.analysisProgress.classList.toggle(
+    "failed",
+    ["failed", "failed_schema", "cancelled"].includes(latestJob.status)
+  );
+}
+
+function estimateClientProgress(job) {
+  if (job.status === "done") {
+    return { percent: 100, label: job.cache_hit ? "Loaded from cache" : "Complete" };
+  }
+  if (["failed", "failed_schema", "cancelled"].includes(job.status)) {
+    return { percent: 100, label: "Failed" };
+  }
+  if (job.status === "queued") {
+    return { percent: 8, label: "Queued" };
+  }
+  if (job.status === "running") {
+    const startedAt = Date.parse(job.heartbeat_at || job.updated_at || job.created_at || "");
+    const elapsedSeconds = Number.isFinite(startedAt) ? Math.max(0, Math.round((Date.now() - startedAt) / 1000)) : 0;
+    return { percent: Math.min(92, 28 + Math.floor(elapsedSeconds * 3)), label: "Codex CLI analyzing" };
+  }
+  return { percent: 0, label: "Waiting" };
+}
+
+function progressTitle(job) {
+  const scope = job.type === "document_analysis" ? "Document analysis" : "Page analysis";
+  if (job.status === "done") {
+    return `${scope} complete`;
+  }
+  if (["failed", "failed_schema", "cancelled"].includes(job.status)) {
+    return `${scope} failed`;
+  }
+  return `${scope} in progress`;
+}
+
+function progressMeta(job, progress) {
+  const payload = job.payload || parseJson(job.payload_json) || {};
+  const pageRange =
+    job.type === "document_analysis"
+      ? `Pages ${payload.start_page || 1}-${payload.end_page || state.currentDocument?.page_count || 1}`
+      : `Page ${payload.page_number || state.currentPage}`;
+  if (job.error) {
+    return job.error;
+  }
+  return `${progress.label || "Working"} - ${pageRange} - Codex CLI`;
+}
+
+function parseJson(value) {
+  try {
+    return value ? JSON.parse(value) : null;
+  } catch {
+    return null;
+  }
 }
 
 function renderSelectionJobs() {

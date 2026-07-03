@@ -499,6 +499,100 @@ mark {
   padding: 16px;
 }
 
+.analysis-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.analysis-tabs {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 3px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 3px;
+  background: #fff;
+}
+
+.analysis-tab {
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 750;
+  min-height: 28px;
+  padding: 0 10px;
+}
+
+.analysis-tab.active {
+  background: var(--blue);
+  color: #fff;
+}
+
+.analysis-progress {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 11px;
+  margin-bottom: 14px;
+}
+
+.analysis-progress[hidden] {
+  display: none;
+}
+
+.analysis-progress.done {
+  border-color: rgba(23, 128, 61, 0.3);
+}
+
+.analysis-progress.failed {
+  border-color: rgba(180, 35, 24, 0.35);
+}
+
+.progress-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.progress-track {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--panel-strong);
+  overflow: hidden;
+  margin: 9px 0 7px;
+}
+
+.progress-track div {
+  height: 100%;
+  width: 0;
+  border-radius: inherit;
+  background: var(--blue);
+  transition: width 240ms ease;
+}
+
+.analysis-progress.done .progress-track div {
+  background: var(--green);
+}
+
+.analysis-progress.failed .progress-track div {
+  background: var(--red);
+}
+
+.progress-meta {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 16px;
+}
+
 .analysis-section {
   border-bottom: 1px solid var(--line);
   padding: 0 0 16px;
@@ -551,6 +645,10 @@ mark {
 .question-list {
   margin: 0;
   padding-left: 20px;
+}
+
+.translation-body {
+  white-space: pre-wrap;
 }
 
 .question-list li {
@@ -631,13 +729,11 @@ mark {
     min-height: auto;
     border-left: 0;
     border-top: 1px solid var(--line);
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 16px;
+    display: block;
   }
 
   .analysis-section {
-    margin: 0;
+    margin-bottom: 16px;
   }
 }
 
@@ -698,5 +794,15 @@ mark {
 
   .analysis-pane {
     grid-template-columns: 1fr;
+  }
+
+  .analysis-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .analysis-tabs,
+  .analysis-header .button {
+    width: 100%;
   }
 }

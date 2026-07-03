@@ -290,6 +290,12 @@ class JsonStore {
       .sort((a, b) => b.created_at.localeCompare(a.created_at));
   }
 
+  listAnalysisJobs(documentId) {
+    return Object.values(this.data.jobs)
+      .filter((job) => job.document_id === documentId && !job.selection_id)
+      .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  }
+
   claimNextJob(workerId, leaseMs) {
     const now = Date.now();
     const jobs = Object.values(this.data.jobs).sort((a, b) => a.created_at.localeCompare(b.created_at));

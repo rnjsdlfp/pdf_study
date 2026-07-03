@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Codex Reader</title>
-    <link rel="stylesheet" href="/styles.css?v=20260703-upload-fix" />
+    <link rel="stylesheet" href="/styles.css?v=20260703-analysis-tabs" />
   </head>
   <body>
     <div class="app-shell">
@@ -109,33 +109,51 @@
         </section>
 
         <aside class="analysis-pane">
-          <section class="analysis-section">
-            <div class="section-title">Summary</div>
-            <div class="section-body" id="summarySection">Ready to analyze</div>
-          </section>
-
-          <section class="analysis-section">
-            <div class="section-title">Terms</div>
-            <div class="term-list" id="termsSection"></div>
-          </section>
-
-          <section class="analysis-section">
-            <div class="section-title section-title-row">
-              <span>Translation</span>
-              <button class="button compact secondary" id="translateButton" type="button">Translate Korean</button>
+          <div class="analysis-header">
+            <div class="analysis-tabs" role="tablist" aria-label="Analysis views">
+              <button class="analysis-tab active" id="analysisTabButton" type="button" role="tab" aria-selected="true">Analysis</button>
+              <button class="analysis-tab" id="translationTabButton" type="button" role="tab" aria-selected="false">Translation</button>
             </div>
-            <div class="section-body" id="translationSection"></div>
+            <button class="button compact secondary" id="translateButton" type="button">Translate Korean</button>
+          </div>
+
+          <section class="analysis-progress" id="analysisProgress" hidden>
+            <div class="progress-row">
+              <strong id="analysisProgressTitle">Analyzing document</strong>
+              <span id="analysisProgressPercent">0%</span>
+            </div>
+            <div class="progress-track" aria-hidden="true"><div id="analysisProgressBar"></div></div>
+            <div class="progress-meta" id="analysisProgressMeta">Waiting for Codex CLI</div>
           </section>
 
-          <section class="analysis-section">
-            <div class="section-title">Follow-up Questions</div>
-            <ol class="question-list" id="questionsSection"></ol>
-          </section>
+          <div id="analysisContent">
+            <section class="analysis-section">
+              <div class="section-title">Summary</div>
+              <div class="section-body" id="summarySection">Ready to analyze</div>
+            </section>
 
-          <section class="analysis-section">
-            <div class="section-title">Selection Jobs</div>
-            <div class="job-list" id="selectionJobsSection"></div>
-          </section>
+            <section class="analysis-section">
+              <div class="section-title">Terms (전문용어)</div>
+              <div class="term-list" id="termsSection"></div>
+            </section>
+
+            <section class="analysis-section">
+              <div class="section-title">Follow-up Questions</div>
+              <ol class="question-list" id="questionsSection"></ol>
+            </section>
+
+            <section class="analysis-section">
+              <div class="section-title">Selection Jobs</div>
+              <div class="job-list" id="selectionJobsSection"></div>
+            </section>
+          </div>
+
+          <div class="translation-tab-panel" id="translationContent" hidden>
+            <section class="analysis-section">
+              <div class="section-title">Extracted Text Translation</div>
+              <div class="section-body translation-body" id="translationSection">Run Analyze Document to generate full-text translation.</div>
+            </section>
+          </div>
         </aside>
       </main>
     </div>
@@ -148,7 +166,7 @@
     </noscript>
     <script>
       (function () {
-        var build = "20260703-upload-fix";
+        var build = "20260703-analysis-tabs";
 
         function setStatus(id, state, text, title) {
           var element = document.getElementById(id);
@@ -325,7 +343,7 @@
           });
       })();
     </script>
-    <script src="/config.js?v=20260703-upload-fix" onerror="window.codexReaderScriptLoadFailed && window.codexReaderScriptLoadFailed(this.src)"></script>
-    <script src="/app.js?v=20260703-upload-fix" onerror="window.codexReaderScriptLoadFailed && window.codexReaderScriptLoadFailed(this.src)"></script>
+    <script src="/config.js?v=20260703-analysis-tabs" onerror="window.codexReaderScriptLoadFailed && window.codexReaderScriptLoadFailed(this.src)"></script>
+    <script src="/app.js?v=20260703-analysis-tabs" onerror="window.codexReaderScriptLoadFailed && window.codexReaderScriptLoadFailed(this.src)"></script>
   </body>
 </html>

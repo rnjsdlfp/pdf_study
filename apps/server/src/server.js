@@ -127,7 +127,10 @@ function createApp({ config, paths, store, eventHub, codexAdapter, worker, logge
     const docAnalysis = url.pathname.match(/^\/api\/documents\/([^/]+)\/analysis$/);
     if (request.method === "GET" && docAnalysis) {
       requireDocument(docAnalysis[1]);
-      sendJson(response, 200, { analysis: store.getAnalysis(docAnalysis[1]) });
+      sendJson(response, 200, {
+        analysis: store.getAnalysis(docAnalysis[1]).map(withJobProgress),
+        jobs: store.listAnalysisJobs(docAnalysis[1]).map(withParsedJob)
+      });
       return;
     }
 
@@ -468,11 +471,38 @@ async function serveStatic(response, pathname, webRoot) {
 }
 
 function withParsedJob(job) {
-  return {
+  return withJobProgress({
     ...job,
     payload: safeJson(job.payload_json),
     result: safeJson(job.result_json)
+  });
+}
+
+function withJobProgress(job) {
+  return {
+    ...job,
+    progress: estimateJobProgress(job)
   };
+}
+
+function estimateJobProgress(job) {
+  const status = job.status || "";
+  if (status === "done") {
+    return { percent: 100, label: job.cache_hit ? "Loaded from cache" : "Complete" };
+  }
+  if (status === "failed" || status === "failed_schema" || status === "cancelled") {
+    return { percent: 100, label: "Failed" };
+  }
+  if (status === "queued") {
+    return { percent: 8, label: "Queued" };
+  }
+  if (status === "running") {
+    const startedAt = Date.parse(job.heartbeat_at || job.updated_at || job.created_at || "");
+    const elapsedSeconds = Number.isFinite(startedAt) ? Math.max(0, Math.round((Date.now() - startedAt) / 1000)) : 0;
+    const percent = Math.min(92, 28 + Math.floor(elapsedSeconds * 3));
+    return { percent, label: "Codex CLI analyzing" };
+  }
+  return { percent: 0, label: "Waiting" };
 }
 
 function sendJson(response, statusCode, payload) {

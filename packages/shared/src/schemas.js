@@ -1,20 +1,32 @@
 const analysisSchema = {
   type: "object",
-  required: ["summary_ko", "terms", "translation_ko", "follow_up_questions"],
+  required: [
+    "summary_original",
+    "summary_ko",
+    "terms",
+    "full_text_translation_ko",
+    "follow_up_questions_original",
+    "follow_up_questions_ko"
+  ],
   properties: {
+    summary_original: { type: "string" },
     summary_ko: { type: "string" },
     terms: {
       type: "array",
       items: {
         type: "object",
-        required: ["term", "definition_ko"],
+        required: ["term", "definition_original", "definition_ko"],
         properties: {
           term: { type: "string" },
+          definition_original: { type: "string" },
           definition_ko: { type: "string" }
         }
       }
     },
+    full_text_translation_ko: { type: "string" },
     translation_ko: { type: "string" },
+    follow_up_questions_original: { type: "array", items: { type: "string" } },
+    follow_up_questions_ko: { type: "array", items: { type: "string" } },
     follow_up_questions: { type: "array", items: { type: "string" } },
     sources: { type: "array" }
   }

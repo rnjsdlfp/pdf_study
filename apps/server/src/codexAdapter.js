@@ -62,7 +62,7 @@ class CodexAdapter {
 
     const status = await this.getStatus();
     if (!status.codex_cli_available) {
-      if (this.config.codexMode === "live") {
+      if (this.config.codexMode === "live" || requiresCodexCli(jobType)) {
         throw new Error("Codex CLI not found.");
       }
       return fallbackResult(jobType, context, "Codex CLI was not found; local fallback was used.");
@@ -90,7 +90,7 @@ class CodexAdapter {
         error: error.message
       });
 
-      if (this.config.codexMode === "live") {
+      if (this.config.codexMode === "live" || requiresCodexCli(jobType)) {
         throw error;
       }
 
@@ -240,7 +240,7 @@ function uniqueList(values) {
 
 function buildPrompt(jobType, context) {
   const date = new Date().toISOString().slice(0, 10);
-  const text = truncate(context.text || context.selection_text || "", jobType === JOB_TYPES.DOCUMENT_ANALYSIS ? 18000 : 8000);
+  const text = truncate(context.text || context.selection_text || "", jobType === JOB_TYPES.DOCUMENT_ANALYSIS ? 80000 : 12000);
 
   if (jobType === JOB_TYPES.SELECTION_FACT_CHECK) {
     return [
@@ -267,12 +267,17 @@ function buildPrompt(jobType, context) {
 
   return [
     "Return JSON only, matching this schema:",
-    '{"summary_original":"string","summary_ko":"string","terms":[{"term":"string","definition_original":"string","definition_ko":"string"}],"translation_ko":"string","follow_up_questions":["string"],"sources":[]}',
-    "Analyze the document in the same language as the source text for summary_original and definition_original. Put Korean only in summary_ko, definition_ko, and translation_ko. Do not use web search. Keep output concise and useful for research reading.",
+    '{"summary_original":"string","summary_ko":"string","terms":[{"term":"string","definition_original":"string","definition_ko":"string"}],"follow_up_questions_original":["string"],"follow_up_questions_ko":["string"],"full_text_translation_ko":"string","translation_ko":"string","sources":[]}',
+    "Use Codex CLI reasoning for every field. Analyze the source text in the source language for summary_original, definition_original, and follow_up_questions_original. Put Korean only in summary_ko, definition_ko, follow_up_questions_ko, full_text_translation_ko, and translation_ko.",
+    "translation_ko must be the same value as full_text_translation_ko for backward compatibility. full_text_translation_ko should translate the provided extracted body text, preserving page cues and important numbers. Do not use web search. Keep Summary, Terms, and Follow-up Questions concise and useful for research reading.",
     `Analysis scope: ${jobType}`,
     `Document title: ${context.document_title || "Untitled"}`,
     `Text:\n${text}`
   ].join("\n\n");
+}
+
+function requiresCodexCli(jobType) {
+  return [JOB_TYPES.PAGE_ANALYSIS, JOB_TYPES.DOCUMENT_ANALYSIS, JOB_TYPES.SELECTION_EXPLAIN].includes(jobType);
 }
 
 function parseCodexJson(stdout) {
@@ -364,7 +369,10 @@ function fallbackResult(jobType, context, caveat) {
     summary_original: makeOriginalSummary(text),
     summary_ko: makeSummary(text),
     terms: makeTerms(text),
+    full_text_translation_ko: makeTranslationNote(text),
     translation_ko: makeTranslationNote(text),
+    follow_up_questions_original: makeQuestions(text, false),
+    follow_up_questions_ko: makeQuestions(text, false),
     follow_up_questions: makeQuestions(text, false),
     sources: [],
     caveats: [caveat]
@@ -467,5 +475,6 @@ module.exports = {
   firstCommandWord,
   parseCodexJson,
   codexCommandCandidates,
+  requiresCodexCli,
   fallbackResult
 };
