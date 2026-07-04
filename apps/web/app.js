@@ -29,7 +29,7 @@ const API_DISCOVERY_URL = normalizeApiBase(window.CODEX_READER_CONFIG?.discovery
 const APP_API_BASE_STORAGE_KEY = window.CODEX_READER_CONFIG?.apiBaseStorageKey || "codexReaderApiBaseV2";
 const FORCE_API_DISCOVERY = Boolean(window.CODEX_READER_CONFIG?.forceDiscovery);
 const PREFER_SAME_ORIGIN_API = Boolean(window.CODEX_READER_CONFIG?.preferSameOriginApi);
-const APP_BUILD_VERSION = "20260704-target-length-v1";
+const APP_BUILD_VERSION = "20260704-dnd-webpage-height-v1";
 const ACTIVE_PROMPT_VERSION = "2026-07-03-default-followup-style";
 const DEFAULT_FOLLOW_UP_QUESTIONS = Object.freeze({
   English: [
@@ -138,19 +138,8 @@ function bindEvents() {
   });
   window.__CODEX_READER_APP_UPLOAD_HANDLER_ACTIVE = true;
 
-  els.uploadForm.addEventListener("dragover", (event) => {
-    event.preventDefault();
-    els.uploadForm.classList.add("dragging");
-  });
-  els.uploadForm.addEventListener("dragleave", () => els.uploadForm.classList.remove("dragging"));
-  els.uploadForm.addEventListener("drop", (event) => {
-    event.preventDefault();
-    els.uploadForm.classList.remove("dragging");
-    const file = [...event.dataTransfer.files].find((item) => item.type === "application/pdf" || /\.pdf$/i.test(item.name));
-    if (file) {
-      uploadPdf(file);
-    }
-  });
+  bindPdfDropTarget(els.uploadForm);
+  bindPdfDropTarget(els.pickPdfButton);
 
   els.urlForm.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -185,6 +174,76 @@ function bindEvents() {
   els.analysisTabButton.addEventListener("click", () => setAnalysisTab("analysis"));
   els.translationTabButton.addEventListener("click", () => setAnalysisTab("translation"));
   els.lastErrorDismissButton?.addEventListener("click", clearLastError);
+}
+
+function bindPdfDropTarget(target) {
+  if (!target) {
+    return;
+  }
+  target.addEventListener("dragenter", handlePdfDragEnter);
+  target.addEventListener("dragover", handlePdfDragOver);
+  target.addEventListener("dragleave", handlePdfDragLeave);
+  target.addEventListener("drop", handlePdfDrop);
+}
+
+function handlePdfDragEnter(event) {
+  if (!isFileDrag(event)) {
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  setPdfDropActive(true);
+}
+
+function handlePdfDragOver(event) {
+  if (!isFileDrag(event)) {
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = "copy";
+  }
+  setPdfDropActive(true);
+}
+
+function handlePdfDragLeave(event) {
+  if (!isFileDrag(event)) {
+    return;
+  }
+  if (event.currentTarget?.contains(event.relatedTarget)) {
+    return;
+  }
+  setPdfDropActive(false);
+}
+
+function handlePdfDrop(event) {
+  if (!isFileDrag(event)) {
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  setPdfDropActive(false);
+  const file = pdfFileFromDrop(event.dataTransfer);
+  if (!file) {
+    toast("Drop a PDF file.");
+    return;
+  }
+  uploadPdf(file);
+}
+
+function isFileDrag(event) {
+  const types = [...(event.dataTransfer?.types || [])];
+  return types.length === 0 || types.includes("Files");
+}
+
+function pdfFileFromDrop(dataTransfer) {
+  return [...(dataTransfer?.files || [])].find((item) => item.type === "application/pdf" || /\.pdf$/i.test(item.name || ""));
+}
+
+function setPdfDropActive(active) {
+  els.uploadForm?.classList.toggle("dragging", active);
+  els.pickPdfButton?.classList.toggle("drop-ready", active);
 }
 
 async function api(path, options = {}) {

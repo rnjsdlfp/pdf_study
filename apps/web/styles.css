@@ -188,6 +188,14 @@ svg {
   border-color: var(--blue-dark);
 }
 
+.button.drop-ready,
+.upload-zone.dragging .button {
+  background: #1e40af;
+  border-color: #1e40af;
+  color: #fff;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
+}
+
 .button.secondary {
   color: var(--blue);
 }
@@ -286,6 +294,10 @@ svg {
   background: #fff;
   color: var(--text);
   outline: none;
+}
+
+.url-form input {
+  font-size: 11px;
 }
 
 .url-form input:focus,
@@ -416,12 +428,12 @@ svg {
 
 .viewer-grid {
   display: grid;
-  grid-template-rows: minmax(220px, 36vh) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   min-height: 0;
   background: #fff;
 }
 
-  .viewer-grid.pdf-mode {
+.viewer-grid.pdf-mode {
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
 }
@@ -1031,10 +1043,10 @@ mark {
   }
 
   .viewer-grid {
-    grid-template-rows: 220px minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
   }
 
-.viewer-grid.pdf-mode {
+  .viewer-grid.pdf-mode {
     grid-template-columns: 1fr;
     grid-template-rows: minmax(520px, 72vh);
   }
