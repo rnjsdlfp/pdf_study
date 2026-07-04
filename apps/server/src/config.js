@@ -55,7 +55,7 @@ function createConfig(overrides = {}) {
       1,
       Math.min(
         4,
-        Math.round(parseNumber(overrides.maxCodexConcurrency || process.env.CODEX_READER_MAX_CODEX_CONCURRENCY, 2))
+        Math.round(parseNumber(overrides.maxCodexConcurrency || process.env.CODEX_READER_MAX_CODEX_CONCURRENCY, 4))
       )
     ),
     maxUploadBytes:

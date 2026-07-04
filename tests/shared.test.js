@@ -332,6 +332,17 @@ test("Codex concurrency config is bounded and configurable", () => {
   assert.equal(normalizeConcurrency(2), 2);
   assert.equal(normalizeConcurrency(99), 4);
   assert.equal(createConfig({ maxCodexConcurrency: 3 }).maxCodexConcurrency, 3);
+  const previous = process.env.CODEX_READER_MAX_CODEX_CONCURRENCY;
+  delete process.env.CODEX_READER_MAX_CODEX_CONCURRENCY;
+  try {
+    assert.equal(createConfig({ maxCodexConcurrency: "" }).maxCodexConcurrency, 4);
+  } finally {
+    if (previous === undefined) {
+      delete process.env.CODEX_READER_MAX_CODEX_CONCURRENCY;
+    } else {
+      process.env.CODEX_READER_MAX_CODEX_CONCURRENCY = previous;
+    }
+  }
 });
 
 test("worker processes queued Codex jobs in parallel up to configured concurrency", async () => {

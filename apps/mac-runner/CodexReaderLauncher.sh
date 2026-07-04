@@ -89,6 +89,7 @@ export CODEX_READER_HOME="$RUNTIME_HOME"
 export CODEX_READER_HOST="$HOST"
 export CODEX_READER_PORT="$PORT"
 export CODEX_READER_CODEX_MODE="${CODEX_READER_CODEX_MODE:-auto}"
+export CODEX_READER_MAX_CODEX_CONCURRENCY="${CODEX_READER_MAX_CODEX_CONCURRENCY:-4}"
 if [ -z "${CODEX_READER_CODEX_COMMAND:-}" ] && command -v codex_reader_resolve_codex >/dev/null 2>&1; then
   CODEX_READER_CODEX_COMMAND="$(codex_reader_resolve_codex || true)"
   if [ -n "$CODEX_READER_CODEX_COMMAND" ]; then
@@ -120,6 +121,7 @@ cd "$ROOT_DIR"
   fi
   printf '[%s] PATH: %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$PATH"
   printf '[%s] Codex command: %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "${CODEX_READER_CODEX_COMMAND:-not found in launcher PATH}"
+  printf '[%s] Max Codex concurrency: %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$CODEX_READER_MAX_CODEX_CONCURRENCY"
 } >> "$LAUNCH_LOG"
 
 restart_existing_runner

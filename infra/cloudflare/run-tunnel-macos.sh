@@ -256,6 +256,7 @@ export CODEX_READER_HOME="$RUNTIME_HOME"
 export CODEX_READER_HOST="$HOST"
 export CODEX_READER_PORT="$PORT"
 export CODEX_READER_CODEX_MODE="${CODEX_READER_CODEX_MODE:-auto}"
+export CODEX_READER_MAX_CODEX_CONCURRENCY="${CODEX_READER_MAX_CODEX_CONCURRENCY:-4}"
 if [ -z "${CODEX_READER_CODEX_COMMAND:-}" ] && command -v codex_reader_resolve_codex >/dev/null 2>&1; then
   CODEX_READER_CODEX_COMMAND="$(codex_reader_resolve_codex || true)"
   if [ -n "$CODEX_READER_CODEX_COMMAND" ]; then
@@ -315,6 +316,7 @@ log_tunnel "PATH: $PATH"
 log_tunnel "npm cache: $NPM_CACHE_DIR"
 log_tunnel "Discovery URL: $DISCOVERY_URL"
 log_tunnel "Codex command: ${CODEX_READER_CODEX_COMMAND:-not found in launcher PATH}"
+log_tunnel "Max Codex concurrency: $CODEX_READER_MAX_CODEX_CONCURRENCY"
 log_tunnel "Codex auth home: $CODEX_HOME"
 if [ -f "$CODEX_HOME/auth.json" ]; then
   log_tunnel "Codex auth file: found"

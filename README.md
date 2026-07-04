@@ -65,7 +65,7 @@ For development inside this repository, set `CODEX_READER_HOME=./.runtime` so ru
 - PDF upload, hashing, local storage, and PyMuPDF4LLM-first text extraction with JavaScript fallback.
 - Webpage URL import with readable text extraction.
 - Documents, pages, selections, jobs, cache, and source records.
-- Lease-based local job queue with configurable Codex CLI concurrency (`CODEX_READER_MAX_CODEX_CONCURRENCY`, default 2).
+- Lease-based local job queue with configurable Codex CLI concurrency (`CODEX_READER_MAX_CODEX_CONCURRENCY`, default 4).
 - Codex CLI adapter with structured fallback output.
 - SSE job status stream.
 - Rational-style web reader UI with status bar, analysis panel, and selection popup.
