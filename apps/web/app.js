@@ -29,7 +29,7 @@ const API_DISCOVERY_URL = normalizeApiBase(window.CODEX_READER_CONFIG?.discovery
 const APP_API_BASE_STORAGE_KEY = window.CODEX_READER_CONFIG?.apiBaseStorageKey || "codexReaderApiBaseV2";
 const FORCE_API_DISCOVERY = Boolean(window.CODEX_READER_CONFIG?.forceDiscovery);
 const PREFER_SAME_ORIGIN_API = Boolean(window.CODEX_READER_CONFIG?.preferSameOriginApi);
-const APP_BUILD_VERSION = "20260704-unsigned-percent-highlights-v1";
+const APP_BUILD_VERSION = "20260704-period-title-highlights-v1";
 const ACTIVE_PROMPT_VERSION = "2026-07-03-default-followup-style";
 const DEFAULT_FOLLOW_UP_QUESTIONS = Object.freeze({
   English: [
@@ -1331,7 +1331,7 @@ function renderTranslationLine(line) {
   }
 
   const labelHeading = text.match(
-    /^(?:[-*\u2022]\s*)?((?:Topic|Subtopic|Sub-topic|Section|Subsection|Theme|Key point|주제|소주제|하위\s*주제|핵심\s*주제|섹션|항목|제목))\s*[:：-]\s*(.*)$/i
+    /^(?:[-*\u2022]\s*)?((?:Title|Topic|Subtopic|Sub-topic|Section|Subsection|Theme|Key point|주제|소주제|하위\s*주제|핵심\s*주제|섹션|항목|제목))\s*[:：-]\s*(.*)$/i
   );
   if (labelHeading) {
     const label = labelHeading[1].replace(/\s+/g, " ");
@@ -1361,6 +1361,10 @@ function renderTranslationInlineWithLabel(line) {
 function renderTranslationInline(value) {
   let html = escapeHtml(String(value || ""));
   html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  html = html.replace(
+    /\b((?:FY|CY)\s?\d{1,2}\/\d{2,4}|(?:FY|CY)\s?\d{2,4}|[1-4]Q(?:\s?(?:FY|CY)?\d{2,4})?|Q[1-4](?:\s?(?:FY|CY)?\d{2,4})?|[12]H(?:\s?(?:FY|CY)?\d{2,4})?|H[12](?:\s?(?:FY|CY)?\d{2,4})?)\b/gi,
+    (match) => translationToken(match, "period")
+  );
   html = html.replace(
     /\b((?:NASDAQ|NYSE|NYSEARCA|AMEX|KOSPI|KOSDAQ|KRX|LSE|TSE|TSX|HKEX|SSE|SZSE)\s*[:：]?\s*[A-Z0-9.-]{1,10})\b/g,
     (match) => translationToken(match, "ticker")

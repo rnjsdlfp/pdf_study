@@ -933,6 +933,11 @@ mark {
   color: #1d4ed8;
 }
 
+.translation-period {
+  color: var(--text);
+  font-weight: 850;
+}
+
 .translation-change-positive {
   background: #ecfdf5;
   color: #065f46;
