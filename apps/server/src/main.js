@@ -16,7 +16,7 @@ async function startServer(overrides = {}) {
   const store = new JsonStore(paths.storeFile);
   const eventHub = new EventHub();
   const codexAdapter = new CodexAdapter(config, logger);
-  const worker = createWorker({ store, eventHub, codexAdapter, logger });
+  const worker = createWorker({ store, eventHub, codexAdapter, logger, maxConcurrency: config.maxCodexConcurrency });
   const app = createApp({ config, paths, store, eventHub, codexAdapter, worker, logger });
 
   worker.start();

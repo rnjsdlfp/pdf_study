@@ -296,10 +296,13 @@ class JsonStore {
       .sort((a, b) => b.created_at.localeCompare(a.created_at));
   }
 
-  claimNextJob(workerId, leaseMs) {
+  claimNextJob(workerId, leaseMs, excludedJobIds = new Set()) {
     const now = Date.now();
     const jobs = Object.values(this.data.jobs).sort((a, b) => a.created_at.localeCompare(b.created_at));
     const job = jobs.find((candidate) => {
+      if (excludedJobIds.has(candidate.id)) {
+        return false;
+      }
       if (candidate.status === JOB_STATUS.QUEUED) {
         return true;
       }

@@ -8,33 +8,60 @@ const {
 } = require("../../../packages/shared/src");
 const { safeJson } = require("./store");
 
-function createWorker({ store, eventHub, codexAdapter, logger }) {
+function createWorker({ store, eventHub, codexAdapter, logger, maxConcurrency = 1 }) {
   const workerId = `worker_${process.pid}_${Math.random().toString(36).slice(2, 8)}`;
   const leaseMs = 5 * 60 * 1000;
+  const maxCodexConcurrency = normalizeConcurrency(maxConcurrency);
+  const activeJobs = new Set();
   let timer = null;
-  let active = false;
+  let ticking = false;
 
-  async function tick() {
-    if (active) {
+  function tick() {
+    if (ticking) {
       return;
     }
-    const job = store.claimNextJob(workerId, leaseMs);
-    if (!job) {
-      return;
-    }
-
-    active = true;
-    emit(job.id);
-
+    ticking = true;
     try {
-      await processJob(job);
-    } catch (error) {
-      logger.error("Job failed.", { jobId: job.id, error: error.message });
-      const failed = store.failJob(job.id, error);
-      emit(job.id, failed);
+      heartbeatActiveJobs();
+      while (timer && activeJobs.size < maxCodexConcurrency) {
+        const job = store.claimNextJob(workerId, leaseMs, activeJobs);
+        if (!job) {
+          break;
+        }
+        activeJobs.add(job.id);
+        emit(job.id);
+        processJobAsync(job);
+      }
     } finally {
-      active = false;
+      ticking = false;
     }
+  }
+
+  function processJobAsync(job) {
+    processJob(job)
+      .catch((error) => {
+        logger.error("Job failed.", { jobId: job.id, error: error.message });
+        const failed = store.failJob(job.id, error);
+        emit(job.id, failed);
+      })
+      .finally(() => {
+        activeJobs.delete(job.id);
+        scheduleTickSoon();
+      });
+  }
+
+  function heartbeatActiveJobs() {
+    for (const jobId of activeJobs) {
+      store.heartbeat(jobId, workerId, leaseMs);
+    }
+  }
+
+  function scheduleTickSoon() {
+    if (!timer) {
+      return;
+    }
+    const timeout = setTimeout(tick, 0);
+    timeout.unref?.();
   }
 
   async function processJob(job) {
@@ -185,13 +212,22 @@ function createWorker({ store, eventHub, codexAdapter, logger }) {
       return {
         enabled: Boolean(timer),
         worker_id: workerId,
-        max_codex_concurrency: 1,
-        active_codex_jobs: active ? 1 : 0
+        max_codex_concurrency: maxCodexConcurrency,
+        active_codex_jobs: activeJobs.size
       };
     }
   };
 }
 
+function normalizeConcurrency(value) {
+  const number = Number(value || 1);
+  if (!Number.isFinite(number)) {
+    return 1;
+  }
+  return Math.max(1, Math.min(4, Math.round(number)));
+}
+
 module.exports = {
-  createWorker
+  createWorker,
+  normalizeConcurrency
 };

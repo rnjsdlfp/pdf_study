@@ -7,7 +7,8 @@ const {
   makeCacheKey,
   validateSelectionText,
   sanitizeFilename,
-  normalizeFactCheckResult
+  normalizeFactCheckResult,
+  JOB_TYPES
 } = require("../packages/shared/src");
 const {
   decodePdfToken,
@@ -33,6 +34,9 @@ const {
 const { isPidAlive } = require("../apps/mac-runner/CodexReaderRunner");
 const { Readable } = require("node:stream");
 const { formatBytes, readBuffer } = require("../apps/server/src/server");
+const { createConfig } = require("../apps/server/src/config");
+const { JsonStore } = require("../apps/server/src/store");
+const { createWorker, normalizeConcurrency } = require("../apps/server/src/worker");
 
 test("cache keys are stable across object key order", () => {
   const a = makeCacheKey({ type: "page", payload: { page: 1, doc: "x" } });
@@ -323,6 +327,64 @@ test("default follow-up questions match requested baseline", () => {
   ]);
 });
 
+test("Codex concurrency config is bounded and configurable", () => {
+  assert.equal(normalizeConcurrency(0), 1);
+  assert.equal(normalizeConcurrency(2), 2);
+  assert.equal(normalizeConcurrency(99), 4);
+  assert.equal(createConfig({ maxCodexConcurrency: 3 }).maxCodexConcurrency, 3);
+});
+
+test("worker processes queued Codex jobs in parallel up to configured concurrency", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "codex-reader-worker-"));
+  try {
+    const store = new JsonStore(path.join(tmp, "store.json"));
+    const document = store.createDocument(
+      {
+        source_type: "webpage",
+        title: "Queue test",
+        file_hash: "queue-test"
+      },
+      [{ page_number: 1, text: "Queue processing text." }]
+    );
+    store.createJob({ document_id: document.id, type: JOB_TYPES.DOCUMENT_ANALYSIS, payload: {}, max_attempts: 1 });
+    store.createJob({ document_id: document.id, type: JOB_TYPES.DOCUMENT_ANALYSIS, payload: {}, max_attempts: 1 });
+
+    let active = 0;
+    let maxActive = 0;
+    const codexAdapter = {
+      async run() {
+        active += 1;
+        maxActive = Math.max(maxActive, active);
+        await new Promise((resolve) => setTimeout(resolve, 80));
+        active -= 1;
+        return {
+          summary_original: "Summary",
+          summary_ko: "요약",
+          terms: [],
+          full_text_translation_ko: "번역",
+          follow_up_questions_original: [],
+          follow_up_questions_ko: []
+        };
+      }
+    };
+    const worker = createWorker({
+      store,
+      eventHub: { emit() {} },
+      codexAdapter,
+      logger: { info() {}, warn() {}, error() {} },
+      maxConcurrency: 2
+    });
+    worker.start();
+    await waitFor(() => store.queueStats().done === 2, 1600);
+    worker.stop();
+
+    assert.equal(store.queueStats().done, 2);
+    assert.equal(maxActive, 2);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 test("current process is not treated as duplicate runner", () => {
   assert.equal(isPidAlive(process.pid), false);
 });
@@ -335,3 +397,25 @@ test("oversized request bodies return a 413 without destroying the stream early"
   });
   assert.equal(formatBytes(200 * 1024 * 1024), "200 MB");
 });
+
+function waitFor(predicate, timeoutMs) {
+  const startedAt = Date.now();
+  return new Promise((resolve, reject) => {
+    const timer = setInterval(() => {
+      try {
+        if (predicate()) {
+          clearInterval(timer);
+          resolve();
+          return;
+        }
+        if (Date.now() - startedAt > timeoutMs) {
+          clearInterval(timer);
+          reject(new Error("Timed out waiting for condition."));
+        }
+      } catch (error) {
+        clearInterval(timer);
+        reject(error);
+      }
+    }, 20);
+  });
+}

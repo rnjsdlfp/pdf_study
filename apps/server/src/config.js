@@ -51,6 +51,13 @@ function createConfig(overrides = {}) {
       overrides.codexTimeoutMs || process.env.CODEX_READER_CODEX_TIMEOUT_MS,
       360000
     ),
+    maxCodexConcurrency: Math.max(
+      1,
+      Math.min(
+        4,
+        Math.round(parseNumber(overrides.maxCodexConcurrency || process.env.CODEX_READER_MAX_CODEX_CONCURRENCY, 2))
+      )
+    ),
     maxUploadBytes:
       parseNumber(overrides.maxUploadMb || process.env.CODEX_READER_MAX_UPLOAD_MB, 200) *
       1024 *
