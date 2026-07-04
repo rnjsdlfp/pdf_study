@@ -157,7 +157,7 @@ svg {
   border-radius: 8px;
   padding: 0 12px;
   cursor: pointer;
-  transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
+  transition: background 140ms ease, border-color 140ms ease, color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
 }
 
 .button {
@@ -190,10 +190,16 @@ svg {
 
 .button.drop-ready,
 .upload-zone.dragging .button {
-  background: #1e40af;
-  border-color: #1e40af;
+  background: #0f766e;
+  border-color: #0f766e;
   color: #fff;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
+  box-shadow: 0 0 0 4px rgba(20, 184, 166, 0.24), 0 10px 22px rgba(15, 118, 110, 0.24);
+  transform: translateY(-1px);
+}
+
+.button.drop-ready svg,
+.upload-zone.dragging .button svg {
+  stroke-width: 2.4;
 }
 
 .button.secondary {

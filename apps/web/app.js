@@ -29,7 +29,7 @@ const API_DISCOVERY_URL = normalizeApiBase(window.CODEX_READER_CONFIG?.discovery
 const APP_API_BASE_STORAGE_KEY = window.CODEX_READER_CONFIG?.apiBaseStorageKey || "codexReaderApiBaseV2";
 const FORCE_API_DISCOVERY = Boolean(window.CODEX_READER_CONFIG?.forceDiscovery);
 const PREFER_SAME_ORIGIN_API = Boolean(window.CODEX_READER_CONFIG?.preferSameOriginApi);
-const APP_BUILD_VERSION = "20260704-dnd-webpage-height-v1";
+const APP_BUILD_VERSION = "20260704-upload-drop-feedback-v1";
 const ACTIVE_PROMPT_VERSION = "2026-07-03-default-followup-style";
 const DEFAULT_FOLLOW_UP_QUESTIONS = Object.freeze({
   English: [
