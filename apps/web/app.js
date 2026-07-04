@@ -29,7 +29,7 @@ const API_DISCOVERY_URL = normalizeApiBase(window.CODEX_READER_CONFIG?.discovery
 const APP_API_BASE_STORAGE_KEY = window.CODEX_READER_CONFIG?.apiBaseStorageKey || "codexReaderApiBaseV2";
 const FORCE_API_DISCOVERY = Boolean(window.CODEX_READER_CONFIG?.forceDiscovery);
 const PREFER_SAME_ORIGIN_API = Boolean(window.CODEX_READER_CONFIG?.preferSameOriginApi);
-const APP_BUILD_VERSION = "20260704-translation-highlights-v1";
+const APP_BUILD_VERSION = "20260704-unsigned-percent-highlights-v1";
 const ACTIVE_PROMPT_VERSION = "2026-07-03-default-followup-style";
 const DEFAULT_FOLLOW_UP_QUESTIONS = Object.freeze({
   English: [
@@ -1375,8 +1375,8 @@ function renderTranslationInline(value) {
     return `${open}${translationToken(code, "ticker")}${close}`;
   });
   html = html.replace(
-    /([+-]\s?\d{1,3}(?:,\d{3})*(?:\.\d+)?\s?%)/g,
-    (match) => translationToken(match, /^\s*\+/.test(match) ? "change-positive" : "change-negative")
+    /([+-]?\s?\d{1,3}(?:,\d{3})*(?:\.\d+)?\s?%)/g,
+    (match) => translationToken(match, /^\s*-/.test(match) ? "change-negative" : "change-positive")
   );
   html = html.replace(
     /(\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?\s+\d{1,2},?\s+\d{4}\b|\b\d{1,2}\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?\s+\d{4}\b|\b\d{4}[-./]\d{1,2}[-./]\d{1,2}\b|\d{4}년\s*\d{1,2}월(?:\s*\d{1,2}일)?)/g,
