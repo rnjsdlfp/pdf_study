@@ -875,7 +875,82 @@ mark {
 }
 
 .translation-body {
-  white-space: pre-wrap;
+  white-space: normal;
+}
+
+.translation-readable {
+  color: #3b475b;
+  display: grid;
+  gap: 8px;
+  line-height: 1.62;
+  overflow-wrap: anywhere;
+}
+
+.translation-readable p {
+  margin: 0;
+}
+
+.translation-readable strong {
+  color: var(--text);
+  font-weight: 850;
+}
+
+.translation-readable h4,
+.translation-heading {
+  border-left: 3px solid rgba(37, 99, 235, 0.55);
+  background: #f8fbff;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.42;
+  margin: 2px 0 0;
+  padding: 7px 9px;
+}
+
+.translation-heading.subtopic {
+  border-left-color: rgba(20, 184, 166, 0.62);
+  background: #f4fbfa;
+}
+
+.translation-gap {
+  height: 4px;
+}
+
+.translation-token {
+  border-radius: 5px;
+  display: inline;
+  font-weight: 760;
+  padding: 0 3px;
+}
+
+.translation-money {
+  background: #fff7ed;
+  color: #9a3412;
+}
+
+.translation-date {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.translation-change-positive {
+  background: #ecfdf5;
+  color: #065f46;
+  font-weight: 850;
+}
+
+.translation-change-negative {
+  background: #fef2f2;
+  color: #991b1b;
+  font-weight: 850;
+}
+
+.translation-ticker {
+  background: #f5f3ff;
+  border: 1px solid rgba(91, 33, 182, 0.2);
+  color: #5b21b6;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.94em;
 }
 
 .question-list li {

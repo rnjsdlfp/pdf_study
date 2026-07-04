@@ -29,7 +29,7 @@ const API_DISCOVERY_URL = normalizeApiBase(window.CODEX_READER_CONFIG?.discovery
 const APP_API_BASE_STORAGE_KEY = window.CODEX_READER_CONFIG?.apiBaseStorageKey || "codexReaderApiBaseV2";
 const FORCE_API_DISCOVERY = Boolean(window.CODEX_READER_CONFIG?.forceDiscovery);
 const PREFER_SAME_ORIGIN_API = Boolean(window.CODEX_READER_CONFIG?.preferSameOriginApi);
-const APP_BUILD_VERSION = "20260704-queue-followup-persist-v1";
+const APP_BUILD_VERSION = "20260704-translation-highlights-v1";
 const ACTIVE_PROMPT_VERSION = "2026-07-03-default-followup-style";
 const DEFAULT_FOLLOW_UP_QUESTIONS = Object.freeze({
   English: [
@@ -989,7 +989,7 @@ function renderAnalysisPanel() {
     els.questionsSection.appendChild(item);
   }
 
-  els.translationSection.textContent = cleanDisplayText(fullTextTranslation());
+  els.translationSection.innerHTML = renderTranslationText(fullTextTranslation());
 }
 
 function mergeQuestions(defaultQuestions, resultQuestions) {
@@ -1296,6 +1296,107 @@ function renderReadableText(value) {
   }
   closeList();
   return `<div class="readable-text">${html}</div>`;
+}
+
+function renderTranslationText(value) {
+  const text = normalizeTranslationText(value);
+  if (!text) {
+    return `<div class="translation-readable"><p>${escapeHtml("No full-text translation returned.")}</p></div>`;
+  }
+
+  const lines = text.split("\n");
+  const html = lines
+    .map((line) => renderTranslationLine(line))
+    .join("");
+  return `<div class="translation-readable">${html}</div>`;
+}
+
+function normalizeTranslationText(value) {
+  return String(value || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\\n/g, "\n")
+    .replace(/[ \t]+\n/g, "\n")
+    .trim();
+}
+
+function renderTranslationLine(line) {
+  const text = String(line || "").trim();
+  if (!text) {
+    return `<div class="translation-gap" aria-hidden="true"></div>`;
+  }
+
+  const markdownHeading = text.match(/^#{1,6}\s+(.+)$/);
+  if (markdownHeading) {
+    return `<h4 class="translation-heading">${renderTranslationInline(markdownHeading[1])}</h4>`;
+  }
+
+  const labelHeading = text.match(
+    /^(?:[-*\u2022]\s*)?((?:Topic|Subtopic|Sub-topic|Section|Subsection|Theme|Key point|주제|소주제|하위\s*주제|핵심\s*주제|섹션|항목|제목))\s*[:：-]\s*(.*)$/i
+  );
+  if (labelHeading) {
+    const label = labelHeading[1].replace(/\s+/g, " ");
+    const body = labelHeading[2] || "";
+    return `
+      <p class="translation-heading ${isSubtopicLabel(label) ? "subtopic" : "topic"}">
+        <strong>${escapeHtml(label)}:</strong>${body ? ` ${renderTranslationInline(body)}` : ""}
+      </p>
+    `;
+  }
+
+  return `<p>${renderTranslationInlineWithLabel(text)}</p>`;
+}
+
+function isSubtopicLabel(value) {
+  return /sub|소주제|하위/i.test(String(value || ""));
+}
+
+function renderTranslationInlineWithLabel(line) {
+  const match = String(line || "").match(/^([^:\n]{2,52})[:：]\s+(.+)$/);
+  if (match && !/https?:\/\//i.test(match[1]) && match[1].trim().split(/\s+/).length <= 8) {
+    return `<strong>${renderTranslationInline(match[1])}:</strong> ${renderTranslationInline(match[2])}`;
+  }
+  return renderTranslationInline(line);
+}
+
+function renderTranslationInline(value) {
+  let html = escapeHtml(String(value || ""));
+  html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  html = html.replace(
+    /\b((?:NASDAQ|NYSE|NYSEARCA|AMEX|KOSPI|KOSDAQ|KRX|LSE|TSE|TSX|HKEX|SSE|SZSE)\s*[:：]?\s*[A-Z0-9.-]{1,10})\b/g,
+    (match) => translationToken(match, "ticker")
+  );
+  html = html.replace(/\b([A-Z]{1,5}\s+(?:US|KS|KQ|JP|HK|LN|TO|CN))\b/g, (match) =>
+    translationToken(match, "ticker")
+  );
+  html = html.replace(/([\[(])(\d{6}|[A-Z]{2,6}(?:\.[A-Z]{1,2})?)([\])])/g, (match, open, code, close) => {
+    if (isCommonNonTickerCode(code)) {
+      return match;
+    }
+    return `${open}${translationToken(code, "ticker")}${close}`;
+  });
+  html = html.replace(
+    /([+-]\s?\d{1,3}(?:,\d{3})*(?:\.\d+)?\s?%)/g,
+    (match) => translationToken(match, /^\s*\+/.test(match) ? "change-positive" : "change-negative")
+  );
+  html = html.replace(
+    /(\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?\s+\d{1,2},?\s+\d{4}\b|\b\d{1,2}\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?\s+\d{4}\b|\b\d{4}[-./]\d{1,2}[-./]\d{1,2}\b|\d{4}년\s*\d{1,2}월(?:\s*\d{1,2}일)?)/g,
+    (match) => translationToken(match, "date")
+  );
+  html = html.replace(
+    /((?:[$€£¥₩]\s?\d[\d,]*(?:\.\d+)?(?:\s?(?:bn|billion|m|million|mn|trillion|tn))?)|(?:\b(?:USD|KRW|EUR|JPY|GBP)\s?\d[\d,]*(?:\.\d+)?(?:\s?(?:bn|billion|m|million|mn|trillion|tn))?))/gi,
+    (match) => translationToken(match, "money")
+  );
+  return html;
+}
+
+function translationToken(value, kind) {
+  return `<span class="translation-token translation-${kind}">${value}</span>`;
+}
+
+function isCommonNonTickerCode(value) {
+  return new Set(["AI", "API", "CEO", "CFO", "COO", "CTO", "FDA", "PDF", "SEC", "US", "USA", "UK", "EU", "EPS", "EBITDA"]).has(
+    String(value || "").toUpperCase()
+  );
 }
 
 function isReadableHeading(line) {
