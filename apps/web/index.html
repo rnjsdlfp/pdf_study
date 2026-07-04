@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Jireh's Deep Study</title>
-    <link rel="stylesheet" href="/styles.css?v=20260704-readable-sidebar-v1" />
+    <link rel="stylesheet" href="/styles.css?v=20260704-target-length-v1" />
   </head>
   <body>
     <div class="app-shell">
@@ -104,12 +104,17 @@
               <button class="analysis-tab active" id="analysisTabButton" type="button" role="tab" aria-selected="true">Analysis</button>
               <button class="analysis-tab" id="translationTabButton" type="button" role="tab" aria-selected="false">Translation</button>
             </div>
-            <label class="language-select-wrap" title="Codex output language">
-              <select id="languageSelect" class="language-select" aria-label="Codex output language">
-                <option value="English">English</option>
-                <option value="Korean">Korean</option>
-              </select>
-            </label>
+            <div class="analysis-controls">
+              <label class="target-length-wrap" title="Approximate output characters including spaces">
+                <input id="resultLengthInput" class="target-length-input" type="number" min="100" max="2000" step="50" value="400" aria-label="Approximate output characters including spaces" />
+              </label>
+              <label class="language-select-wrap" title="Codex output language">
+                <select id="languageSelect" class="language-select" aria-label="Codex output language">
+                  <option value="English">English</option>
+                  <option value="Korean">Korean</option>
+                </select>
+              </label>
+            </div>
           </div>
 
           <section class="analysis-progress" id="analysisProgress" hidden>
@@ -157,6 +162,14 @@
 
             <section class="analysis-section">
               <div class="section-title">Follow-up Questions</div>
+              <div class="custom-follow-up">
+                <textarea id="customFollowUpInput" class="manual-input" rows="2" placeholder="Ask your own follow-up prompt"></textarea>
+                <button class="button compact full" id="customFollowUpButton" type="button" disabled>
+                  <svg viewBox="0 0 24 24"><path d="M5 12h14" /><path d="m13 6 6 6-6 6" /></svg>
+                  Run Follow-up
+                </button>
+                <div class="follow-up-answer" id="customFollowUpOutput" hidden></div>
+              </div>
               <ol class="question-list" id="questionsSection"></ol>
             </section>
 
@@ -180,7 +193,7 @@
     </noscript>
     <script>
       (function () {
-        var build = "20260704-readable-sidebar-v1";
+        var build = "20260704-target-length-v1";
         var activeToasts = {};
         var maxToasts = 3;
 
@@ -411,7 +424,7 @@
           });
       })();
     </script>
-    <script src="/config.js?v=20260704-readable-sidebar-v1" onerror="window.codexReaderScriptLoadFailed && window.codexReaderScriptLoadFailed(this.src)"></script>
-    <script src="/app.js?v=20260704-readable-sidebar-v1" onerror="window.codexReaderScriptLoadFailed && window.codexReaderScriptLoadFailed(this.src)"></script>
+    <script src="/config.js?v=20260704-target-length-v1" onerror="window.codexReaderScriptLoadFailed && window.codexReaderScriptLoadFailed(this.src)"></script>
+    <script src="/app.js?v=20260704-target-length-v1" onerror="window.codexReaderScriptLoadFailed && window.codexReaderScriptLoadFailed(this.src)"></script>
   </body>
 </html>

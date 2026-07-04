@@ -245,7 +245,7 @@ svg {
 
 .workspace {
   display: grid;
-  grid-template-columns: 244px minmax(0, 1fr) 396px;
+  grid-template-columns: 244px minmax(0, 1fr) 496px;
   height: calc(100vh - 64px);
   min-height: 0;
 }
@@ -522,6 +522,35 @@ mark {
   justify-content: space-between;
   gap: 10px;
   margin-bottom: 14px;
+}
+
+.analysis-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.target-length-wrap {
+  width: 78px;
+}
+
+.target-length-input {
+  width: 100%;
+  min-height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 0 8px;
+}
+
+.target-length-input:focus {
+  border-color: #9db8ff;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.11);
+  outline: none;
 }
 
 .language-select-wrap {
@@ -821,6 +850,12 @@ mark {
   padding-left: 20px;
 }
 
+.custom-follow-up {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
 .translation-body {
   white-space: pre-wrap;
 }
@@ -1023,8 +1058,14 @@ mark {
   }
 
   .analysis-tabs,
+  .analysis-controls,
   .language-select-wrap,
+  .target-length-wrap,
   .analysis-header .button {
     width: 100%;
+  }
+
+  .analysis-controls {
+    align-items: stretch;
   }
 }

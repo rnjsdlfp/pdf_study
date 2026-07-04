@@ -109,6 +109,7 @@ function createWorker({ store, eventHub, codexAdapter, logger }) {
       document_title: document ? document.title : "Untitled",
       source_type: document ? document.source_type : "",
       output_language: payload.output_language || "English",
+      result_char_target: payload.result_char_target || 400,
       summary_context: summaryContext,
       document_text: documentText,
       text,

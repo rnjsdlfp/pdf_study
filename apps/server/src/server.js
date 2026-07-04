@@ -152,6 +152,7 @@ function createApp({ config, paths, store, eventHub, codexAdapter, worker, logge
         start_page: Number(body.start_page || 1),
         end_page: Number(body.end_page || document.page_count || 1),
         output_language: normalizeOutputLanguage(body.output_language),
+        result_char_target: normalizeResultCharTarget(body.result_char_target),
         rerun: Boolean(body.rerun)
       };
       const type = scope === "document" || scope === "range" ? JOB_TYPES.DOCUMENT_ANALYSIS : JOB_TYPES.PAGE_ANALYSIS;
@@ -162,7 +163,8 @@ function createApp({ config, paths, store, eventHub, codexAdapter, worker, logge
         page_number: payload.page_number,
         start_page: payload.start_page,
         end_page: payload.end_page,
-        output_language: payload.output_language
+        output_language: payload.output_language,
+        result_char_target: payload.result_char_target
       });
       const job = store.createJob({
         document_id: document.id,
@@ -220,13 +222,15 @@ function createApp({ config, paths, store, eventHub, codexAdapter, worker, logge
       const body = await readJson(request, 1024 * 1024);
       const type = selectionJobType(body.type);
       const outputLanguage = normalizeOutputLanguage(body.output_language);
+      const resultCharTarget = normalizeResultCharTarget(body.result_char_target);
       const cacheKey = makeCacheKey({
         type,
         document_id: document.id,
         file_hash: document.file_hash || document.url,
         selection_text: selection.selection_text,
         surrounding_text: selection.surrounding_text,
-        output_language: outputLanguage
+        output_language: outputLanguage,
+        result_char_target: resultCharTarget
       });
       const job = store.createJob({
         document_id: document.id,
@@ -235,6 +239,7 @@ function createApp({ config, paths, store, eventHub, codexAdapter, worker, logge
         payload: {
           cache_key: cacheKey,
           output_language: outputLanguage,
+          result_char_target: resultCharTarget,
           rerun: Boolean(body.rerun)
         },
         cache_key: cacheKey,
@@ -529,6 +534,14 @@ function selectionJobType(type) {
 
 function normalizeOutputLanguage(value) {
   return /^ko|korean$/i.test(String(value || "")) ? "Korean" : "English";
+}
+
+function normalizeResultCharTarget(value) {
+  const number = Number(value || 400);
+  if (!Number.isFinite(number)) {
+    return 400;
+  }
+  return Math.max(100, Math.min(2000, Math.round(number)));
 }
 
 function sendJson(response, statusCode, payload) {

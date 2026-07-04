@@ -9,6 +9,8 @@ const state = {
   analysis: [],
   analysisJobs: new Map(),
   lastError: null,
+  resultCharTarget: 400,
+  customFollowUpQuestion: "",
   manualJobs: {
     explain: null,
     fact_check: null
@@ -27,7 +29,7 @@ const API_DISCOVERY_URL = normalizeApiBase(window.CODEX_READER_CONFIG?.discovery
 const APP_API_BASE_STORAGE_KEY = window.CODEX_READER_CONFIG?.apiBaseStorageKey || "codexReaderApiBaseV2";
 const FORCE_API_DISCOVERY = Boolean(window.CODEX_READER_CONFIG?.forceDiscovery);
 const PREFER_SAME_ORIGIN_API = Boolean(window.CODEX_READER_CONFIG?.preferSameOriginApi);
-const APP_BUILD_VERSION = "20260704-readable-sidebar-v1";
+const APP_BUILD_VERSION = "20260704-target-length-v1";
 const ACTIVE_PROMPT_VERSION = "2026-07-03-default-followup-style";
 const DEFAULT_FOLLOW_UP_QUESTIONS = Object.freeze({
   English: [
@@ -72,6 +74,7 @@ const els = {
   pdfPreview: document.getElementById("pdfPreview"),
   viewerGrid: document.querySelector(".viewer-grid"),
   readerSurface: document.getElementById("readerSurface"),
+  resultLengthInput: document.getElementById("resultLengthInput"),
   languageSelect: document.getElementById("languageSelect"),
   summarySection: document.getElementById("summarySection"),
   translationSection: document.getElementById("translationSection"),
@@ -82,6 +85,9 @@ const els = {
   manualFactCheckInput: document.getElementById("manualFactCheckInput"),
   manualFactCheckButton: document.getElementById("manualFactCheckButton"),
   manualFactCheckOutput: document.getElementById("manualFactCheckOutput"),
+  customFollowUpInput: document.getElementById("customFollowUpInput"),
+  customFollowUpButton: document.getElementById("customFollowUpButton"),
+  customFollowUpOutput: document.getElementById("customFollowUpOutput"),
   analysisTabButton: document.getElementById("analysisTabButton"),
   translationTabButton: document.getElementById("translationTabButton"),
   analysisContent: document.getElementById("analysisContent"),
@@ -167,6 +173,11 @@ function bindEvents() {
   els.manualFactCheckInput.addEventListener("input", renderManualTools);
   els.manualExplainButton.addEventListener("click", () => createManualJob("explain"));
   els.manualFactCheckButton.addEventListener("click", () => createManualJob("fact_check"));
+  els.customFollowUpInput?.addEventListener("input", renderCustomFollowUpControls);
+  els.customFollowUpButton?.addEventListener("click", createCustomFollowUpJob);
+  els.resultLengthInput?.addEventListener("input", () => {
+    state.resultCharTarget = resultCharTarget();
+  });
   els.languageSelect.addEventListener("change", () => {
     state.responseLanguage = els.languageSelect.value === "Korean" ? "Korean" : "English";
     renderAnalysisPanel();
@@ -640,7 +651,8 @@ async function createAnalysisJob(scope) {
         page_number: state.currentPage,
         start_page: 1,
         end_page: state.currentDocument.page_count || 1,
-        output_language: state.responseLanguage
+        output_language: state.responseLanguage,
+        result_char_target: resultCharTarget()
       })
     });
     if (payload.job) {
@@ -661,6 +673,7 @@ function resetManualJobs() {
   };
   state.followUpJobs = new Map();
   state.manualJobTypes = new Map();
+  state.customFollowUpQuestion = "";
 }
 
 async function createManualJob(type) {
@@ -694,6 +707,7 @@ async function createManualJob(type) {
       body: JSON.stringify({
         type,
         output_language: state.responseLanguage,
+        result_char_target: resultCharTarget(),
         rerun: true
       })
     });
@@ -709,6 +723,18 @@ async function createManualJob(type) {
   } catch (error) {
     reportError(error, type === "fact_check" ? "Fact-check failed" : "Explain failed");
   }
+}
+
+async function createCustomFollowUpJob() {
+  const question = els.customFollowUpInput.value.replace(/\s+/g, " ").trim();
+  if (question.length < 8) {
+    toast("Enter a follow-up prompt first.");
+    els.customFollowUpInput.focus();
+    return;
+  }
+  state.customFollowUpQuestion = question;
+  renderCustomFollowUpControls();
+  await createFollowUpJob(question);
 }
 
 async function createFollowUpJob(question) {
@@ -862,6 +888,7 @@ function renderAnalysisPanel() {
   renderAnalysisTabs();
   renderAnalysisProgress();
   renderManualTools();
+  renderCustomFollowUpControls();
 
   const latestJob = state.analysis[0] || null;
   const latest = latestJob?.result || null;
@@ -1036,6 +1063,14 @@ function documentText() {
   return state.pages.map((page) => page.text || "").join("\n\n");
 }
 
+function resultCharTarget() {
+  const value = Number(els.resultLengthInput?.value || state.resultCharTarget || 400);
+  if (!Number.isFinite(value)) {
+    return 400;
+  }
+  return Math.max(100, Math.min(2000, Math.round(value)));
+}
+
 function renderManualTools() {
   if (!els.manualExplainButton || !els.manualFactCheckButton) {
     return;
@@ -1045,6 +1080,23 @@ function renderManualTools() {
   els.manualFactCheckButton.disabled = !hasDocument || els.manualFactCheckInput.value.trim().length < 8;
   els.manualExplainOutput.innerHTML = renderManualJobResult("explain", state.manualJobs.explain);
   els.manualFactCheckOutput.innerHTML = renderManualJobResult("fact_check", state.manualJobs.fact_check);
+}
+
+function renderCustomFollowUpControls() {
+  if (!els.customFollowUpButton || !els.customFollowUpInput || !els.customFollowUpOutput) {
+    return;
+  }
+  const prompt = els.customFollowUpInput.value.replace(/\s+/g, " ").trim();
+  els.customFollowUpButton.disabled = !state.currentDocument || prompt.length < 8;
+  const question = state.customFollowUpQuestion;
+  const job = question ? state.followUpJobs.get(question) : null;
+  if (!job) {
+    els.customFollowUpOutput.hidden = true;
+    els.customFollowUpOutput.innerHTML = "";
+    return;
+  }
+  els.customFollowUpOutput.hidden = false;
+  els.customFollowUpOutput.innerHTML = renderFollowUpAnswer(job);
 }
 
 function renderManualJobResult(type, job) {

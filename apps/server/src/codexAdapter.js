@@ -412,6 +412,7 @@ function buildPrompt(jobType, context) {
   const summaryContext = truncate(context.summary_context || "", 3000) || "No analyzed summary is available yet.";
   const outputStyle = outputStyleInstruction(outputLanguage);
   const webSearchAvailable = context.codex_web_search_ok !== false;
+  const resultCharTarget = normalizeResultCharTarget(context.result_char_target);
 
   if (jobType === JOB_TYPES.SELECTION_FACT_CHECK) {
     return [
@@ -421,6 +422,7 @@ function buildPrompt(jobType, context) {
         '","relevance":"high|medium|low"}],"caveats":["string"],"confidence":"high|medium|low"}',
       `Output language: ${outputLanguage}. Write every human-readable string value in ${outputLanguage}, including explanation_ko and caveats, even when a field name contains a language suffix.`,
       outputStyle,
+      targetLengthInstruction(resultCharTarget, "Fact-check explanation"),
       "Treat the user-provided text as the exact claim or claim bundle to verify. Use the summary and document context only to understand wording, entities, dates, and units.",
       webSearchAvailable
         ? "Use web search. Cite external sources. If the claim cannot be checked, use not_checkable. Use plain text only. Do not use Markdown tables, headings, bold markers, or double-asterisk emphasis markers anywhere in string values."
@@ -438,6 +440,7 @@ function buildPrompt(jobType, context) {
       '{"explanation_original":"string","explanation_ko":"string","terms":[{"term":"string","definition_original":"string","definition_ko":"string"}],"translation_ko":"string","follow_up_questions":["string"]}',
       `Output language: ${outputLanguage}. Write every human-readable string value in ${outputLanguage}, including explanation_original, explanation_ko, definition fields, translation_ko, and follow_up_questions, even when a field name contains a language suffix.`,
       outputStyle,
+      targetLengthInstruction(resultCharTarget, "Explain answer"),
       "Explain the exact user-provided target text. Use the summary and surrounding context only to disambiguate the target, connect it to the document, and avoid overexplaining unrelated material.",
       "Do not use web search. Use plain text only. Do not use Markdown tables, headings, bold markers, or double-asterisk emphasis markers anywhere in string values.",
       termSelectionInstruction(5),
@@ -474,7 +477,8 @@ function buildPrompt(jobType, context) {
     "Use Codex CLI reasoning for every field. Analyze the source text in the source language for summary_original, definition_original, and follow_up_questions_original. Put Korean only in summary_ko, definition_ko, follow_up_questions_ko, full_text_translation_ko, and translation_ko.",
     `Output language: ${outputLanguage}. Write summary_original, summary_ko, follow_up_questions_original, follow_up_questions_ko, and follow_up_questions in ${outputLanguage}, even when a field name contains a language suffix.`,
     outputStyle,
-    "Summary requirement: write the Summary field as 5 to 8 sentences. Keep it concise, but include the central thesis, key evidence, important numbers or dates, assumptions, and main caveats.",
+    targetLengthInstruction(resultCharTarget, "Summary"),
+    "Summary requirement: keep it concise, but include the central thesis, key evidence, important numbers or dates, assumptions, and main caveats.",
     "translation_ko must be the same value as full_text_translation_ko for backward compatibility. full_text_translation_ko should translate the provided extracted body text, preserving page cues and important numbers. Keep Terms concise and useful for research reading.",
     webSearchAvailable
       ? "Use web search to strengthen Follow-up Questions only: ground the questions in the extracted text, current public context, and plausible counter-evidence. Do not turn follow-up questions into a source list."
@@ -508,6 +512,18 @@ function termSelectionInstruction(targetCount) {
 
 function normalizeOutputLanguage(value) {
   return /^ko|korean$/i.test(String(value || "")) ? "Korean" : "English";
+}
+
+function normalizeResultCharTarget(value) {
+  const number = Number(value || 400);
+  if (!Number.isFinite(number)) {
+    return 400;
+  }
+  return Math.max(100, Math.min(2000, Math.round(number)));
+}
+
+function targetLengthInstruction(target, label) {
+  return `${label} length target: write the main ${label.toLowerCase()} field at approximately ${target} characters including spaces. This is an approximate target, not a hard cutoff.`;
 }
 
 function outputStyleInstruction(outputLanguage) {

@@ -234,10 +234,12 @@ test("analysis prompt asks Codex for web-informed follow-up prompts", () => {
   const prompt = buildPrompt("document_analysis", {
     document_title: "Example",
     output_language: "Korean",
+    result_char_target: 550,
     text: "A report argues demand growth will accelerate after a product launch."
   });
   assert.match(prompt, /Use web search to strengthen Follow-up Questions only/);
-  assert.match(prompt, /Summary requirement: write the Summary field as 5 to 8 sentences/);
+  assert.match(prompt, /Summary length target/);
+  assert.match(prompt, /approximately 550 characters including spaces/);
   assert.match(prompt, /gaejo-sik style/);
   assert.match(prompt, /개조식/);
   assert.match(prompt, /명사형 종결어미/);
@@ -253,15 +255,32 @@ test("manual prompts include summary context and selected output language", () =
   const prompt = buildPrompt("selection_explain", {
     document_title: "Example",
     output_language: "Korean",
+    result_char_target: 350,
     summary_context: "Demand is expected to accelerate as launch constraints fade.",
     selection_text: "Reit OW PT to $39",
     surrounding_text: "The report reiterates an overweight rating and price target."
   });
   assert.match(prompt, /Output language: Korean/);
+  assert.match(prompt, /Explain answer length target/);
+  assert.match(prompt, /approximately 350 characters including spaces/);
   assert.match(prompt, /gaejo-sik style/);
   assert.match(prompt, /Automatically extracted summary for context/);
   assert.match(prompt, /Demand is expected to accelerate/);
   assert.doesNotMatch(prompt, /right-sidebar/);
+});
+
+test("fact-check prompt includes requested output length target", () => {
+  const prompt = buildPrompt("selection_fact_check", {
+    document_title: "Example",
+    output_language: "English",
+    result_char_target: 300,
+    summary_context: "The document argues demand is inflecting.",
+    selection_text: "Revenue increased 12 percent in 2026.",
+    surrounding_text: "The report highlights revenue momentum."
+  });
+  assert.match(prompt, /Fact-check explanation length target/);
+  assert.match(prompt, /approximately 300 characters including spaces/);
+  assert.match(prompt, /Output language: English/);
 });
 
 test("follow-up answer prompt uses search, full text, and language", () => {
